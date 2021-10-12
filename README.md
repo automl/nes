@@ -3,7 +3,7 @@
 ## Introduction
 This repo contains the code accompanying the paper:
 
-[Neural Ensemble Search for Performant and Calibrated Predictions](https://arxiv.org/abs/2006.08573)
+[Neural Ensemble Search for Uncertainty Estimation and Dataset Shift](https://arxiv.org/abs/2006.08573)
 
 Authors: Sheheryar Zaidi*, Arber Zela*, Thomas Elsken, Chris Holmes, Frank Hutter and Yee Whye Teh.
 
@@ -11,7 +11,7 @@ The paper introduces two NES algorithms for finding ensembles with varying basel
 
 The code, as provided here, makes use of the [SLURM](https://slurm.schedmd.com/overview.html) job scheduler, however, one should be able to make changes to run the code without SLURM.
 
-News: Oral presentation at the [Uncertainty & Robustness in Deep Learning (UDL) Workshop @ ICML 2020](https://sites.google.com/view/udlworkshop2020/home?authuser=0)
+News: **Accepted at the NeurIPS 2021 conference** & Oral presentation at the [Uncertainty & Robustness in Deep Learning (UDL) Workshop @ ICML 2020](https://sites.google.com/view/udlworkshop2020/home?authuser=0)
 
 ## Setting up virtual environment
 
@@ -116,7 +116,7 @@ For more details, please refer to the original [paper](https://arxiv.org/abs/200
 ```
 @article{zaidi20,
   author  = {Sheheryar Zaidi and Arber Zela and Thomas Elsken and Chris Holmes and Frank Hutter and Yee Whye Teh},
-  title   = {{Neural} {Ensemble} {Search} for {Performant} and {Calibrated} {Predictions}},
+  title   = {{Neural} {Ensemble} {Search} for {Uncertainty} {Estimation} and {Dataset} {Shift}},
   journal = {arXiv:2006.08573 {cs.LG}},
   year    = {2020},
   month   = jun,
