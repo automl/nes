@@ -7,5 +7,5 @@ scikit-image
 Wand
 tqdm
 numpy==1.16.4
-torch==1.3.1+cu100
+torch==1.4.0
 torchvision==0.4.2

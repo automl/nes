@@ -11,9 +11,11 @@ from nes.ensemble_selection.utils import (
     make_predictions,
     evaluate_predictions,
     form_ensemble_pred,
+    form_ensemble_pred_v_2,
     model_seeds,
 )
 
+from itertools import combinations
 
 METRICS = SimpleNamespace(loss="loss", accuracy="acc", error="error", ece="ece")
 
@@ -41,22 +43,16 @@ def check_to_avoid_overwrite(thing_to_check):
 
 class Baselearner:
     """
-    A container class for baselearner networks which can hold the nn.Module, 
+    A container class for baselearner networks which can hold the nn.Module,
     predictions (as tensors) and evaluations. It has methods for computing the predictions
-    and evaluations on validation and test sets with shifts of varying severities. 
+    and evaluations on validation and test sets with shifts of varying
+    severities.
     """
 
     _cpu_device = torch.device("cpu")
 
     def __init__(
-        self,
-        model_id,
-        severities,
-        device=None,
-        nn_module=None,
-        preds=None,
-        evals=None,
-        model_config=None,
+        self, model_id, severities, device=None, nn_module=None, preds=None, evals=None,
     ):
         self.model_id = model_id
         self.device = device
@@ -64,9 +60,6 @@ class Baselearner:
         self.preds = preds
         self.evals = evals
         self.lsm_applied = False
-        self.model_config = (
-            model_config  # TODO: can probably be removed. do grep check to make sure.
-        )
         self.severities = severities
 
     def to_device(self, device=None):
@@ -82,6 +75,24 @@ class Baselearner:
                     dct[k] = TensorDataset(
                         tsr_dst.tensors[0].to(device), tsr_dst.tensors[1].to(device)
                     )
+
+        self.device = device
+
+    def partially_to_device(self, data_type, device=None):
+        assert data_type in ["val", "test"], "Invalid data_type arg."
+
+        if device is None:
+            device = self._cpu_device
+
+        if self.nn_module is not None:
+            self.nn_module.to(device)
+
+        if self.preds is not None:
+            dct = self.preds[data_type]  # only move the requested data_type to gpu
+            for k, tsr_dst in dct.items():
+                dct[k] = TensorDataset(
+                    tsr_dst.tensors[0].to(device), tsr_dst.tensors[1].to(device)
+                )
 
         self.device = device
 
@@ -199,22 +210,27 @@ class Baselearner:
 
 
 def load_baselearner(model_id, load_nn_module, working_dir):
+    if model_id.scheme in ['nes_rs_oneshot', 'nes_rs_darts']:
+        scheme = 'nes_rs'
+    else:
+        scheme = model_id.scheme
+
     dir = os.path.join(
         working_dir,
-        f"arch_{model_id.arch}_init_{model_id.init}_scheme_{model_id.scheme}",
+        f"arch_{model_id.arch}_init_{model_id.init}_scheme_{scheme}",
     )
     to_return = Baselearner.load(dir, load_nn_module)
-    assert to_return.model_id == model_id
+    # assert to_return.model_id == model_id
     return to_return
 
 
 class Ensemble:
     """
     A container class for ensembles which holds Baselearner objects. It can hold
-    and compute the ensemble's predictions, evaluations. 
+    and compute the ensemble's predictions, evaluations.
     """
 
-    def __init__(self, baselearners):
+    def __init__(self, baselearners, bsl_weights=None):
         if len(set(b.device for b in baselearners)) != 1:
             raise ValueError("All baselearners should be on the same device.")
 
@@ -235,9 +251,23 @@ class Ensemble:
         self.oracle_preds = None
         self.oracle_evals = None
 
+        self.disagreement = None
+
         self.device = self.baselearners[0].device
         self._cpu_device = torch.device("cpu")
         self.severities = self.baselearners[0].severities
+
+        self.repeating_bsls = len(set(b.model_id for b in self.baselearners)) != len(
+            self.baselearners
+        )
+
+        if bsl_weights is not None:
+            # bsl_weights list ordering should be consistent with the baselearners list ordering.
+            assert not self.repeating_bsls, "Expected unique base learners if given weights."
+            self.bsl_weights = torch.tensor(bsl_weights).to(self.device)
+            assert bsl_weights.shape == (self.ensemble_size,), "Number of weights doesn't match number of base learners"
+        else:
+            self.bsl_weights = None
 
     def to_device(self, device=None):
         if device is None:
@@ -263,20 +293,42 @@ class Ensemble:
 
         for severity in severities:
             for data_type in ["val", "test"]:
-                preds_dict = {
-                    b.model_id: b.preds[data_type][str(severity)].tensors[0]
-                    for b in self.baselearners
-                }
-                labels = self.baselearners[0].preds[data_type][str(severity)].tensors[1]
+                if not self.repeating_bsls:
+                    preds_dict = {
+                        b.model_id: b.preds[data_type][str(severity)].tensors[0]
+                        for b in self.baselearners
+                    }
+                    labels = (
+                        self.baselearners[0].preds[data_type][str(severity)].tensors[1]
+                    )
 
-                preds = form_ensemble_pred(
-                    preds_dict,
-                    lsm_applied=False,
-                    combine_post_softmax=combine_post_softmax,
-                )
-                preds = TensorDataset(preds, labels)
+                    preds = form_ensemble_pred(
+                        preds_dict,
+                        lsm_applied=False,
+                        combine_post_softmax=combine_post_softmax,
+                        bsl_weights=self.bsl_weights,
+                    )
+                    preds = TensorDataset(preds, labels)
 
-                ens_preds[data_type][str(severity)] = preds
+                    ens_preds[data_type][str(severity)] = preds
+                else:
+                    print("There are repeating base learners.")
+                    preds_list = [
+                        b.preds[data_type][str(severity)].tensors[0]
+                        for b in self.baselearners
+                    ]
+                    labels = (
+                        self.baselearners[0].preds[data_type][str(severity)].tensors[1]
+                    )
+
+                    preds = form_ensemble_pred_v_2(
+                        preds_list,
+                        lsm_applied=False,
+                        combine_post_softmax=combine_post_softmax,
+                    )
+                    preds = TensorDataset(preds, labels)
+
+                    ens_preds[data_type][str(severity)] = preds
 
         self.preds = ens_preds
 
@@ -384,4 +436,46 @@ class Ensemble:
                 evals[data_type][str(severity)] = evaluation
 
         self.oracle_evals = evals
+
+    @check_to_avoid_overwrite("disagreement")
+    def compute_disagreement(self):
+        disagreement = defaultdict(dict)
+        # pairs_of_baselearners = combinations(self.baselearners, 2)
+        num_pairs = len(list(combinations(self.baselearners, 2)))
+
+        for severity in self.severities:
+            for data_type in ["val", "test"]:
+
+                avg_disagreement = 0
+                avg_norm_disagreement = 0
+                for bsl1, bsl2 in combinations(self.baselearners, 2):
+                    bsl1_class_preds = (
+                        bsl1.preds[data_type][str(severity)].tensors[0].max(dim=1)[1]
+                    )
+                    bsl2_class_preds = (
+                        bsl2.preds[data_type][str(severity)].tensors[0].max(dim=1)[1]
+                    )
+
+                    num_disagreements = (
+                        (bsl1_class_preds != bsl2_class_preds).sum().item()
+                    )
+                    total = bsl1_class_preds.shape[0]
+
+                    avg_acc = (
+                        bsl1.evals[data_type][str(severity)]["acc"]
+                        + bsl2.evals[data_type][str(severity)]["acc"]
+                    ) / 2
+
+                    avg_disagreement += num_disagreements / total
+                    avg_norm_disagreement += num_disagreements / total / (1 - avg_acc)
+
+                avg_disagreement /= num_pairs
+                avg_norm_disagreement /= num_pairs
+
+                disagreement[data_type][str(severity)] = {
+                    "disagreement": avg_disagreement,
+                    "normalized_disagreement": avg_norm_disagreement,
+                }
+
+        self.disagreement = disagreement
 

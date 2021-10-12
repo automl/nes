@@ -13,8 +13,8 @@ from collections import defaultdict, namedtuple
 from pathlib import Path
 
 from nes.ensemble_selection.containers import Ensemble, load_baselearner
-from nes.ensemble_selection.utils import args_to_device, model_seeds, POOLS
-from nes.ensemble_selection.config import MAX_M
+from nes.ensemble_selection.utils import args_to_device, model_seeds, POOLS, SCHEMES
+from nes.ensemble_selection.config import MAX_M, BUDGET
 from nes.ensemble_selection.rs_incumbents import get_incumbents
 
 parser = argparse.ArgumentParser()
@@ -23,6 +23,12 @@ parser.add_argument(
     type=int,
     default=0,
     help="Index of GPU device to use. For CPU, set to -1. Default: 0.",
+)
+parser.add_argument(
+    "--arch_id",
+    type=int,
+    default=None,
+    help="Only used for DeepEns (RS) + ESA",
 )
 parser.add_argument(
     "--esa",
@@ -58,25 +64,88 @@ parser.add_argument(
 )
 parser.add_argument(
     "--method",
-    choices=["nes_rs", "nes_re", "deepens_rs", "deepens_darts", "deepens_amoebanet"],
+    choices=["nes_rs", "nes_re", "deepens_rs", "deepens_darts",
+             "deepens_amoebanet_50k", "nes_rs_oneshot", "nes_re_50k",
+             "deepens_darts_anchor", "deepens_darts_50k", "nes_rs_50k",
+             "deepens_amoebanet", "deepens_gdas", "deepens_minimum",
+             "deepens_pcdarts", "darts_esa", "amoebanet_esa", "nes_rs_esa",
+             "darts_rs", "darts_hyper", "joint", "nes_rs_darts"],
     type=str,
 )
 parser.add_argument(
-    "--dataset", choices=["cifar10", "fmnist"], type=str, help="Dataset."
+    "--dataset", choices=["cifar10", "cifar100", "fmnist", "imagenet", "tiny"], type=str, help="Dataset."
 )
+
+parser.add_argument(
+    "--validation_size",
+    type=int,
+    default=-1,
+)
+
 
 args = parser.parse_args()
 
 torch.cuda.set_device(args_to_device(args.device))
 
+if args.method == "nes_rs_esa":
+    POOLS.update(
+        {
+            scheme: [model_seeds(arch=args.arch_id, init=seed, scheme=scheme)
+                     for seed in range(BUDGET)]
+            for scheme in SCHEMES
+            if scheme == "nes_rs_esa"
+        }
+    )
+elif args.method in ["nes_rs_50k", "nes_re_50k"]:
+    method = args.method.strip('_50k')
+    load_name = f"ensembles_chosen__esa_{args.esa}_M_{args.M}_pool_{method}.pickle"
+    with open(
+        os.path.join(
+            args.load_ens_chosen_dir,
+            load_name,
+        ),
+        "rb",
+    ) as f:
+        ens_chosen_dct = pickle.load(f)
+        sev_0_ids = ens_chosen_dct['ensembles_chosen']['0']
+        ids_sev_0 = [x[i].arch for x in sev_0_ids for i in range(len(x))]
 
-def evaluated_ensemble(list_of_bsl_ids):
+    POOLS.update(
+        {
+            scheme: [model_seeds(arch=seed, init=seed, scheme=scheme)
+                     for seed in ids_sev_0]
+            for scheme in SCHEMES
+            if scheme == args.method
+        }
+    )
 
-    baselearners = [library[m] for m in list_of_bsl_ids]
+dataset_to_max_m = {
+    "cifar10": 30,
+    "cifar100": 30,
+    "fmnist": 30,
+    "tiny": 15,
+    "imagenet": 3
+}
+
+MAX_M = dataset_to_max_m[args.dataset]
+
+
+def evaluated_ensemble(list_of_bsl_ids, bsl_weights=None):
+
+    if args.method in ['nes_rs_50k', 'nes_re_50k']:
+        list_of_bsl_ids_new = []
+        for m in list_of_bsl_ids:
+            m = m._replace(scheme=args.method)
+            list_of_bsl_ids_new.append(m)
+    else:
+        list_of_bsl_ids_new = list_of_bsl_ids
+
+    baselearners = [library[m] for m in list_of_bsl_ids_new]
+
     for b in baselearners:
         b.to_device(args_to_device(args.device))
 
-    ensemble = Ensemble(baselearners)
+    ensemble = Ensemble(baselearners, bsl_weights=bsl_weights)
 
     ensemble.compute_preds()
     ensemble.compute_evals()
@@ -87,6 +156,8 @@ def evaluated_ensemble(list_of_bsl_ids):
     ensemble.compute_oracle_preds()
     ensemble.compute_oracle_evals()
     ensemble.oracle_preds = None  # clear memory
+
+    #ensemble.compute_disagreement()
 
     for b in baselearners:
         b.to_device(args_to_device(-1))
@@ -132,19 +203,33 @@ library = {
 
 Coordinates = namedtuple("Coordinates", field_names=["x", "y"])
 
-severities = range(6) if (args.dataset == "cifar10") else range(1)
+severities = range(6) if (args.dataset in ["cifar10", "cifar100", "tiny"]) else range(1)
+#severities = range(1)
 
 nested_dict = lambda: defaultdict(nested_dict)
 
-ens_attrs = ["evals", "avg_baselearner_evals", "oracle_evals"]
+ens_attrs = ["evals", "avg_baselearner_evals", "oracle_evals", "disagreement"]
 
 plotting_data = nested_dict()
 
-if args.method in ["nes_rs", "nes_re"]:
+if args.method in ["nes_rs", "nes_re", "darts_esa", "amoebanet_esa",
+                   "nes_rs_oneshot", "nes_re_50k", "nes_rs_darts",
+                   "nes_rs_esa", "darts_rs", "darts_hyper", "joint",
+                   "nes_rs_50k"]:
+    if args.method in ["nes_rs_50k", "nes_re_50k"]:
+        method = args.method.strip('_50k')
+    else:
+        method = args.method
+
+    if args.validation_size > -1:
+        load_name = f"ensembles_chosen__esa_{args.esa}_M_{args.M}_pool_{method}_valsize_{args.validation_size}.pickle"
+    else:
+        load_name = f"ensembles_chosen__esa_{args.esa}_M_{args.M}_pool_{method}.pickle"
+
     with open(
         os.path.join(
             args.load_ens_chosen_dir,
-            f"ensembles_chosen__esa_{args.esa}_M_{args.M}_pool_{args.method}.pickle",
+            load_name,
         ),
         "rb",
     ) as f:
@@ -152,9 +237,13 @@ if args.method in ["nes_rs", "nes_re"]:
 
     for severity in severities:
         ens_chosen = ens_chosen_dct["ensembles_chosen"][str(severity)]
-
         x = ens_chosen_dct["num_arch_samples"]
-        yy = [evaluated_ensemble(bsls) for bsls in ens_chosen]
+        if "ensemble_weights" in ens_chosen_dct.keys():
+            bsl_weights_chosen = ens_chosen_dct["ensemble_weights"][str(severity)]
+            assert len(bsl_weights_chosen) == len(ens_chosen), "Weights and bsls list lengths don't match up."
+            yy = [evaluated_ensemble(bsls, bsl_weights=weights) for bsls, weights in zip(ens_chosen, bsl_weights_chosen)]
+        else:
+            yy = [evaluated_ensemble(bsls) for bsls in ens_chosen]
 
         assert len(x) == len(yy)
 
@@ -167,16 +256,23 @@ if args.method in ["nes_rs", "nes_re"]:
         print(f"Done severity = {severity}")
 
     Path(SAVE_DIR).mkdir(exist_ok=True, parents=True)
+    if args.validation_size > -1:
+        save_name = f"plotting_data__esa_{args.esa}_M_{args.M}_pool_{args.method}_valsize_{args.validation_size}.pickle"
+    else:
+        save_name = f"plotting_data__esa_{args.esa}_M_{args.M}_pool_{args.method}.pickle"
+
     with open(
         os.path.join(
             SAVE_DIR,
-            f"plotting_data__esa_{args.esa}_M_{args.M}_pool_{args.method}.pickle",
+            save_name,
         ),
         "wb",
     ) as f:
         pickle.dump(plotting_data, f)
 
-elif args.method in ["deepens_darts", "deepens_amoebanet"]:
+if args.method in ["deepens_darts", "deepens_darts_50k", "deepens_amoebanet", "deepens_gdas",
+                   "deepens_darts_anchor", "deepens_minimum",
+                   "deepens_pcdarts", "deepens_amoebanet_50k"]:
 
     for severity in severities:
 

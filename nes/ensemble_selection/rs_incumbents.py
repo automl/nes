@@ -34,7 +34,7 @@ def get_incumbents(pool_name, load_bsls_dir_name, dataset):
         model.to_device(args_to_device(DEVICE_NUM))
 
     dct = {}
-    severities = range(6) if (dataset == "cifar10") else range(1)
+    severities = range(6) if (dataset in ["cifar10", "cifar100", "tiny"]) else range(1)
     for severity in severities:
         print('severity %d'%severity)
         best_models = {}
@@ -73,14 +73,17 @@ if __name__ == "__main__":
         help="Pool to choose incumbents from. Currently only applied to nes_rs pool for deepens_rs baseline. Default: nes_rs.",
     )
     parser.add_argument(
-        "--dataset", choices=["cifar10", "fmnist"], type=str, help="Dataset."
+        "--dataset", choices=["cifar10", "cifar100", "fmnist", "imagenet", "tiny"], type=str, help="Dataset."
     )
 
     args = parser.parse_args()
 
     lss = []
     for pool_name in [args.pool_name]:
-        for dct in get_incumbents(pool_name, args.load_bsls_dir, args.dataset).values():
+        incumbents = get_incumbents(pool_name, args.load_bsls_dir, args.dataset)
+        for dct in incumbents.values():
+            print('###########')
+            print(dct['200'])
             for i in dct.values():
                 lss.extend(i)
 

@@ -9,6 +9,7 @@ import ConfigSpace
 from functools import partial, wraps
 from pathlib import Path
 from torch.utils.data import DataLoader, SubsetRandomSampler
+from torch.autograd import Variable
 from ConfigSpace.read_and_write import json as cs_json
 
 from nes.optimizers.baselearner_train.genotypes import Genotype, PRIMITIVES
@@ -17,6 +18,14 @@ from nes.optimizers.baselearner_train.genotypes import Genotype, PRIMITIVES
 only_numeric_fn = lambda x: int(re.sub("[^0-9]", "", x))
 custom_sorted = partial(sorted, key=only_numeric_fn)
 
+
+def drop_path(x, drop_prob):
+  if drop_prob > 0.:
+    keep_prob = 1.-drop_prob
+    mask = Variable(torch.cuda.FloatTensor(x.size(0), 1, 1, 1).bernoulli_(keep_prob))
+    x.div_(keep_prob)
+    x.mul_(mask)
+  return x
 
 class AvgrageMeter(object):
 
@@ -49,6 +58,39 @@ def accuracy(output, target, topk=(1,)):
   return res
 
 
+def build_dataloader_tiny_imagenet(data_path, batch_size, mode, n_workers=4):
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+
+    train_transform = transforms.Compose([#transforms.RandomCrop(64, padding=8),
+                                          transforms.RandomResizedCrop(64),
+                                          transforms.RandomHorizontalFlip(),
+                                          transforms.ColorJitter(
+                                              brightness=0.4,
+                                              contrast=0.4,
+                                              saturation=0.4,
+                                              hue=0.2),
+                                          transforms.ToTensor(),
+                                          transforms.Normalize(mean, std)])
+    test_transform = transforms.Compose([transforms.ToTensor(),
+                                         transforms.Normalize(mean, std)])
+
+    train_data = torchvision.datasets.ImageFolder(
+        root=os.path.join(data_path, 'train'),
+        transform=train_transform
+    )
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True,
+                        num_workers=n_workers, pin_memory=True)
+
+    test_data = torchvision.datasets.ImageFolder(
+        root=os.path.join(data_path, 'val'),
+        transform=test_transform
+    )
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False,
+                        num_workers=n_workers, pin_memory=True)
+    return train_loader, test_loader
+
+
 def build_dataloader_by_sample_idx(data_path, batch_size, mode,
                                    dataset, training_idxs, device,
                                    put_data_on_gpu=True):
@@ -66,6 +108,8 @@ def build_dataloader_by_sample_idx(data_path, batch_size, mode,
         dataset_cls = torchvision.datasets.FashionMNIST
     elif dataset == 'cifar10':
         dataset_cls = torchvision.datasets.CIFAR10
+    elif dataset == 'cifar100':
+        dataset_cls = torchvision.datasets.CIFAR100
 
     trans = transforms.Compose(transformations)
 

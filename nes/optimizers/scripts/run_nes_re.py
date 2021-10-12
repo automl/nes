@@ -1,3 +1,4 @@
+import os
 import argparse
 import logging
 import pickle
@@ -23,7 +24,7 @@ parser.add_argument('--nic_name', type=str, help='Which network interface to use
 parser.add_argument('--working_directory', type=str, help='directory where to store the live rundata', default=None)
 parser.add_argument('--array_id', type=int, default=1)
 parser.add_argument('--total_num_workers', type=int, default=20)
-parser.add_argument('--seed', type=int, default=1, help='Seed')
+parser.add_argument('--global_seed', type=int, default=1, help='Seed')
 parser.add_argument('--num_epochs', type=int, default=15, help='Number of epochs to use.')
 parser.add_argument('--batch_size', type=int, default=100)
 parser.add_argument('--dataset', type=str, default='fmnist', help='dataset')
@@ -37,10 +38,29 @@ parser.add_argument('--severity_list', type=str, default='0 5',
                     help='Severity levels to sample from during evolution')
 parser.add_argument('--esa', type=str, default='beam_search',
                     help='Ensemble selection algorithm')
+parser.add_argument('--lr', type=float, default=0.025,
+                    help='leaning rate to train the baselearner')
+parser.add_argument('--n_layers', type=int, default=8,
+                    help='Mini-batch size to train the baselearner')
+parser.add_argument('--init_channels', type=int, default=16,
+                    help='Mini-batch size to train the baselearner')
+parser.add_argument('--scheduler', type=str, default='cosine',
+                    help='scheme name, i.e. nes or deepens variants')
+parser.add_argument('--n_workers', type=int, default=4,
+                    help='Number of CPU workers')
+parser.add_argument('--n_datapoints', type=int, default=40000,
+                    help='train size')
+parser.add_argument('--grad_clip', action='store_true', default=False,
+                    help='debug mode: run for a single mini-batch')
 
 args = parser.parse_args()
-np.random.seed(args.seed)
-torch.manual_seed(args.seed)
+
+assert args.global_seed > 0, "global seed should be greater than 0"
+np.random.seed(args.global_seed)
+torch.manual_seed(args.global_seed)
+
+args.working_directory = os.path.join(args.working_directory,
+                                      'run_%d'%args.global_seed)
 
 host = nic_name_to_host(args.nic_name)
 
@@ -66,6 +86,9 @@ if args.array_id == 1:
                     scheme=args.scheme,
                     warmstart_dir=args.warmstart_dir,
                     dataset=args.dataset,
+                    n_workers=args.n_workers,
+                    n_datapoints=args.n_datapoints,
+                    nb201=False,
                     debug=args.debug)
     worker.run(background=True)
 
@@ -119,6 +142,7 @@ else:
                     scheme=args.scheme,
                     warmstart_dir=args.warmstart_dir,
                     dataset=args.dataset,
+                    n_datapoints=args.n_datapoints,
                     debug=args.debug)
 
     # connect to master

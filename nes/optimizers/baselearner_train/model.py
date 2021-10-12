@@ -1,17 +1,30 @@
 import os
+import sys
+import math
 import json
 import time
 import torch
 import torch.nn as nn
+import torch.nn.init as init
 import numpy as np
 
 from nes.optimizers.baselearner_train.operations import *
 from nes.optimizers.baselearner_train import genotypes
 
 
+def get_init_std(p):
+    if p.dim() == 1:
+        return None
+    fan = init._calculate_correct_fan(p, "fan_in")
+    gain = init.calculate_gain("leaky_relu", math.sqrt(5))
+    std = gain / math.sqrt(fan)
+    return std
+
+
 class Cell(nn.Module):
 
-    def __init__(self, genotype, C_prev_prev, C_prev, C, reduction, reduction_prev):
+    def __init__(self, genotype, C_prev_prev, C_prev, C, reduction,
+                 reduction_prev, drop_prob=0.3):
         super(Cell, self).__init__()
 
         if reduction_prev:
@@ -27,7 +40,7 @@ class Cell(nn.Module):
             op_names, indices = zip(*genotype.normal)
             concat = genotype.normal_concat
         self._compile(C, op_names, indices, concat, reduction)
-        self.dropout = nn.Dropout2d(p=0.3)
+        self.dropout = nn.Dropout2d(p=drop_prob)
 
     def _compile(self, C, op_names, indices, concat, reduction):
         assert len(op_names) == len(indices)
@@ -90,7 +103,8 @@ class AuxiliaryHeadCIFAR(nn.Module):
 
 
 class NetworkCIFAR(nn.Module):
-    def __init__(self, C, num_classes, layers, auxiliary, genotype):
+    def __init__(self, C, num_classes, layers, auxiliary, genotype,
+                 drop_prob=0.3):
         super(NetworkCIFAR, self).__init__()
         self._layers = layers
         self._auxiliary = auxiliary
@@ -111,7 +125,8 @@ class NetworkCIFAR(nn.Module):
                 reduction = True
             else:
                 reduction = False
-            cell = Cell(genotype, C_prev_prev, C_prev, C_curr, reduction, reduction_prev)
+            cell = Cell(genotype, C_prev_prev, C_prev, C_curr, reduction,
+                        reduction_prev, drop_prob)
             reduction_prev = reduction
             self.cells += [cell]
             C_prev_prev, C_prev = C_prev, cell.multiplier * C_curr
@@ -137,17 +152,26 @@ class NetworkCIFAR(nn.Module):
 
 
 class DARTSByGenotype(nn.Module):
-    def __init__(self, genotype, seed_init, dataset='fmnist'):
+    def __init__(self, genotype, seed_init, dataset='fmnist', global_seed=1,
+                 n_layers=8, init_channels=16, auxiliary_head=False,
+                 drop_prob=0.3, **kwargs):
         super(DARTSByGenotype, self).__init__()
 
-        assert dataset in ['cifar10', 'fmnist']
+        assert dataset in ['cifar10', 'cifar100', 'fmnist', 'tiny']
         self.genotype = genotype
-        layers = 8 if dataset=='cifar10' else 5
-        C = 16 if dataset=='cifar10' else 8
+        layers = 8 if dataset in ['cifar10', 'cifar100', 'tiny'] else 5
+        C = 16 if dataset in ['cifar10', 'cifar100', 'tiny'] else 8
 
-        torch.manual_seed(seed_init)
-        self.model = NetworkCIFAR(C=C, num_classes=10, layers=layers,
-                                  auxiliary=False, genotype=self.genotype)
+        if dataset == 'tiny': num_classes = 200
+        elif dataset == 'cifar100': num_classes = 100
+        else: num_classes = 10
+
+        self.num_classes = num_classes
+
+        torch.manual_seed(seed_init + 400 * (global_seed - 1)) # TODO: global seed shouldn't be handled like this. what if we change max ensemble size (i.e. 30)?
+        self.model = NetworkCIFAR(C=C, num_classes=num_classes, layers=layers,
+                                  auxiliary=False, genotype=self.genotype,
+                                  drop_prob=drop_prob)
 
     def forward(self, x):
         return self.model(x)[0]
@@ -155,26 +179,46 @@ class DARTSByGenotype(nn.Module):
 
     @classmethod
     def base_learner_train_save(cls, seed_init, arch_id, genotype, train_loader,
-                                num_epochs, save_path, device,
-                                verbose=False, logger=None, dataset='fmnist', debug=False):
+                                test_loader, num_epochs, save_path, device,
+                                verbose=False, logger=None, dataset='fmnist',
+                                debug=False, global_seed=1, lr=0.025,
+                                wd=3e-4, n_layers=8, anchor=False, anch_coeff=1,
+                                init_channels=16, drop_prob= 0.3, **kwargs):
         '''This function is the main training loop that trains and saves the
         model (at various checkpoints)'''
 
         if logger is None:
             raise ValueError("No logger provided.")
 
-        learning_rate = 0.025
+        learning_rate = lr
+        print(lr, wd, anch_coeff)
+        print('##################################')
 
         # Initialize architecture and weights using genotype and initialization seed.
-        model = cls(genotype=genotype, seed_init=seed_init, dataset=dataset)
+        model = cls(genotype=genotype, seed_init=seed_init, dataset=dataset,
+                    global_seed=global_seed, n_layers=n_layers,
+                    init_channels=init_channels, drop_prob=drop_prob)
         model.to(device)
 
         # Loss and optimizer mostly using default settings from DARTS paper.
         criterion = nn.NLLLoss()
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate,
-                                    momentum=0.9, weight_decay=3e-4)
+                                    momentum=0.9, weight_decay=wd)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
                                                                num_epochs)
+
+        ###### ANCHORING SETUP
+        if anchor:
+            model_for_init = cls(genotype=genotype, seed_init=seed_init+13452,
+                                 dataset=dataset, global_seed=global_seed+13452,
+                                 n_layers=n_layers, init_channels=init_channels)
+            model_for_init.to(device)
+
+            anchor_params = [(p.data.clone(), get_init_std(p)) for p in
+                             model_for_init.parameters()]
+            assert all((not p.requires_grad) for p, _ in anchor_params)
+        ###### END ANCHORING SETUP
+
 
         start_time = time.time()
         torch.manual_seed(0)
@@ -190,7 +234,42 @@ class DARTSByGenotype(nn.Module):
 
                 outputs = model(images)
                 outputs = outputs.log_softmax(1)
-                loss = criterion(outputs, labels)
+                loss_nll = criterion(outputs, labels)
+
+                ### START ANCHORED ###
+                if anchor:
+                    anch_reg = 0
+                    # leave out the weight and bias of the final fc layer
+                    for p, (p_anch, init_std) in zip(list(model.parameters())[:-2], anchor_params[:-2]):
+                        assert p.dim() in [1, 4]
+                        if p.dim() == 1: # skip batch norm params
+                            continue
+
+                        anch_reg += (1 / (2 * init_std**2)) * (p - p_anch).pow(2).sum()
+
+                    # final layer weight
+                    for p, (p_anch, init_std) in zip(list(model.parameters())[-2:-1], anchor_params[-2:-1]):
+                        assert p.dim() in [2]
+                        anch_reg += (1 / (2 * init_std**2)) * (p - p_anch).pow(2).sum()
+
+                    # p is the weight matrix of last layer
+                    fan_in, _ = init._calculate_fan_in_and_fan_out(p)
+                    # std of init of bias of last layer
+                    init_std = 1 / math.sqrt(3 * fan_in)
+
+                    # final layer bias
+                    for p, (p_anch, _) in zip(list(model.parameters())[-1:], anchor_params[-1:]):
+                        assert p.dim() in [1]
+                        assert p.shape[0] == model.num_classes
+                        anch_reg += (1 / (2 * init_std**2)) * (p - p_anch).pow(2).sum()
+
+                    anch_reg = anch_reg / len(train_loader.dataset) # num_datapoints
+                    loss = loss_nll + anch_coeff * anch_reg
+                    anch_reg_to_print = anch_reg.item()
+                else:
+                    loss = loss_nll
+                    anch_reg_to_print = 0
+                ### END ANCHORED ###
 
                 total = labels.size(0)
                 _, predicted = torch.max(outputs.data, 1)
@@ -207,13 +286,7 @@ class DARTSByGenotype(nn.Module):
 
                 if verbose:
                     if (i + 1) % 100 == 0:
-                        logger.info(
-                            'Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}, Accuracy: '
-                            '{:.4f}. Model_ID: (arch {}, init {})'.format(epoch + 1,
-                            num_epochs, i + 1, total_step, loss.item(), correct /
-                                                                         total,
-                                                                         arch_id,
-                                                                         seed_init))
+                        logger.info('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}, Anch_loss: {:.4f}, Accuracy: {:.4f}. Model_ID: (arch {}, init {})'.format(epoch + 1, num_epochs, i + 1, total_step, loss_nll.item(), anch_reg_to_print, correct / total, arch_id, seed_init))
 
             scheduler.step()
             if debug:
