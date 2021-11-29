@@ -3,7 +3,7 @@ import numpy as np
 from hpbandster.core.master import Master
 from hpbandster.optimizers.iterations import SuccessiveHalving
 
-from .re_gen import RegularizedEvolution as CG_RE
+from .re_sampler import RegularizedEvolutionSampler as CG_RE
 
 
 class RegularizedEvolution(Master):

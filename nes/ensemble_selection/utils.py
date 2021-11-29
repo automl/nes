@@ -4,15 +4,15 @@ import torch.nn as nn
 import numpy as np
 
 from torch.utils.data import TensorDataset
-from collections import namedtuple, defaultdict
+from collections import defaultdict
 
-from nes.utils.cifar_C_loader import (
+from nes.utils.data_loaders import (
     build_dataloader_cifar_c_mixed,
     build_dataloader_cifar_c,
     build_dataloader_imagenet,
-    build_dataloader_tiny
+    build_dataloader_tiny,
+    build_dataloader_fmnist
 )
-from nes.optimizers.baselearner_train.utils import build_dataloader_by_sample_idx
 
 
 def make_predictions(models, data_loader, device, num_classes):
@@ -212,31 +212,10 @@ class Registry:
         return add
 
 
-model_seeds = namedtuple(typename="model_seeds", field_names=["arch", "init", "scheme"])
-
-
-def create_dataloader_dict_fmnist(device):
-    dataloaders = defaultdict(dict)
-    dataloaders["val"][str(0)] = build_dataloader_by_sample_idx(
-        "data",
-        batch_size=100,
-        mode="val",
-        dataset="fmnist",
-        training_idxs=(50000, 60000),
-        device=device,
+def args_to_device(arg_device):
+    return (
+        torch.device(f"cuda:{arg_device}") if arg_device != -1 else torch.device("cpu")
     )
-    dataloaders["test"][str(0)] = build_dataloader_by_sample_idx(
-        "data",
-        batch_size=100,
-        mode="test",
-        dataset="fmnist",
-        training_idxs=(0, 10000),
-        device=device,
-    )
-
-    dataloaders["metadata"] = {"device": device}
-
-    return dataloaders
 
 
 def get_indices(path='nes/utils/nb201/configs', dataset='cifar10'):
@@ -262,10 +241,9 @@ def get_indices(path='nes/utils/nb201/configs', dataset='cifar10'):
     return indices_train, indices_valid
 
 
-def create_dataloader_dict_imagenet(device, dataset='imagenet', nb201=True):
+def create_dataloader_dict_imagenet(device):
     dataloaders = defaultdict(dict)
-
-    samples_test, samples_valid = get_indices(dataset=dataset)
+    samples_test, samples_valid = get_indices(dataset='imagenet')
 
     dataloaders["val"]['0'] = build_dataloader_imagenet(
         batch_size=100,
@@ -274,7 +252,7 @@ def create_dataloader_dict_imagenet(device, dataset='imagenet', nb201=True):
         train=False,
         device=device,
         sample_indices=samples_valid,
-        dataset=dataset,
+        dataset='imagenet',
     )
     dataloaders["test"]['0'] = build_dataloader_imagenet(
         batch_size=100,
@@ -283,11 +261,9 @@ def create_dataloader_dict_imagenet(device, dataset='imagenet', nb201=True):
         train=False,
         device=device,
         sample_indices=samples_test,
-        dataset=dataset,
+        dataset='imagenet',
     )
-
     dataloaders["metadata"] = {"device": device}
-
     return dataloaders
 
 
@@ -312,7 +288,6 @@ def create_dataloader_dict_cifar(device, dataset='cifar10', nb201=False,
             samples_valid = list(range(n_datapoints, 50000))
 
     for severity in range(0, 6):
-
         if severity == 0:
             dataloaders["val"][str(severity)] = build_dataloader_cifar_c(
                 batch_size=100,
@@ -343,9 +318,7 @@ def create_dataloader_dict_cifar(device, dataset='cifar10', nb201=False,
                 100, False, severity, False, device, samples_test, dataset,
                 nb201
             )
-
     dataloaders["metadata"] = {"device": device}
-
     return dataloaders
 
 
@@ -361,71 +334,42 @@ def create_dataloader_dict_tiny(device):
     return dataloaders
 
 
-def args_to_device(arg_device):
-    return (
-        torch.device(f"cuda:{arg_device}") if arg_device != -1 else torch.device("cpu")
+def create_dataloader_dict_fmnist(device):
+    dataloaders = defaultdict(dict)
+    dataloaders["val"][str(0)] = build_dataloader_fmnist(
+        batch_size=100,
+        train=True,
+        device=device,
+        sample_indices=list(range(50000, 60000))
     )
+    dataloaders["test"][str(0)] = build_dataloader_fmnist(
+        batch_size=100,
+        train=False,
+        device=device,
+        sample_indices=list(range(0, 10000))
+    )
+    dataloaders["metadata"] = {"device": device}
+    return dataloaders
 
 
-# ======================================
-# Some global configs for the experiment. Need to move this into a separate config file.
+def get_dataloaders_and_classes(dataset, device, nb201, n_datapoints):
+    if dataset == 'fmnist':
+        dataloaders = create_dataloader_dict_fmnist(device)
+    elif dataset in ['cifar10', 'cifar100']:
+        dataloaders = create_dataloader_dict_cifar(device, dataset, nb201,
+                                                   n_datapoints)
+    elif dataset == 'imagenet':
+        dataloaders = create_dataloader_dict_imagenet(device)
+    elif dataset == 'tiny':
+        dataloaders = create_dataloader_dict_tiny(device)
 
-from nes.ensemble_selection.config import BUDGET, PLOT_EVERY, MAX_M
+    if dataset == 'imagenet':
+        num_classes = 120
+    elif dataset == 'tiny':
+        num_classes = 200
+    else:
+        num_classes = 100 if dataset == 'cifar100' else 10
 
-dataset_to_budget = {
-    "cifar10": 400,
-    "cifar100": 400,
-    "fmnist": 400,
-    "tiny": 200,
-    "imagenet": 1000
-}
+    return dataloaders, num_classes
 
-
-# deepens_rs not included here yet since the archs are the best ones from the sample trained for nes_rs. See rs_incumbets.py
-#SCHEMES = ["nes_re", "nes_rs", "deepens_darts", "deepens_amoebanet"]
-SCHEMES = ["nes_rs", "nes_re", "deepens_darts", "deepens_gdas",
-           "nes_rs_oneshot", "nes_re_50k", "nes_rs_darts",
-           "deepens_minimum", "nes_rs_50k", "deepens_amoebanet_50k",
-           "deepens_darts_50k", "deepens_amoebanet", "darts_esa", "amoebanet_esa", "nes_rs_esa",
-           "deepens_darts_anchor", "darts_rs", "darts_hyper", "joint"]
-
-POOLS = {
-    scheme: [model_seeds(arch=seed, init=seed, scheme=scheme) for seed in range(BUDGET)]
-    for scheme in SCHEMES
-    if "nes" in scheme
-}
-
-POOLS.update(
-    {
-        scheme: [model_seeds(arch=0, init=seed, scheme=scheme) for seed in range(MAX_M)]
-        for scheme in SCHEMES
-        if "deepens" in scheme
-    }
-)
-
-POOLS.update(
-    {
-        scheme: [model_seeds(arch=0, init=seed, scheme=scheme) for seed in range(BUDGET)]
-        for scheme in SCHEMES
-        if scheme in ["darts_esa", "amoebanet_esa"]
-    }
-)
-
-# tiny seed 3
-POOLS.update(
-    {
-        scheme: [model_seeds(arch=7, init=seed, scheme=scheme) for seed in range(BUDGET)]
-        for scheme in SCHEMES
-        if scheme == "nes_rs_esa"
-    }
-)
-
-
-POOLS.update(
-    {
-        scheme: [model_seeds(arch=seed, init=seed, scheme=scheme) for seed in range(BUDGET)]
-        for scheme in SCHEMES
-        if scheme in ["darts_rs", "darts_hyper", "joint"]
-    }
-)
 

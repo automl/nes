@@ -6,16 +6,16 @@ from torch.utils.data import TensorDataset
 from collections import defaultdict
 from types import SimpleNamespace
 from pathlib import Path
+from itertools import combinations
 
 from nes.ensemble_selection.utils import (
     make_predictions,
     evaluate_predictions,
     form_ensemble_pred,
     form_ensemble_pred_v_2,
-    model_seeds,
 )
+from nes.ensemble_selection.config import model_seeds
 
-from itertools import combinations
 
 METRICS = SimpleNamespace(loss="loss", accuracy="acc", error="error", ece="ece")
 

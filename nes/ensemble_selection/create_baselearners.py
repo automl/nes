@@ -2,29 +2,25 @@ import torch
 import numpy as np
 
 from nes.ensemble_selection.containers import Baselearner
-from nes.ensemble_selection.utils import (
-    model_seeds,
-    create_dataloader_dict_cifar,
-    create_dataloader_dict_fmnist,
-    create_dataloader_dict_imagenet,
-    create_dataloader_dict_tiny
-)
-from nes.optimizers.baselearner_train.model import DARTSByGenotype as model_cifar
-from nes.optimizers.baselearner_train.model_imagenet import DARTSByGenotype as model_tiny
+from nes.ensemble_selection.config import model_seeds
+from nes.ensemble_selection.utils import get_dataloaders_and_classes
+from nes.darts.baselearner_train.model import DARTSByGenotype as model_cifar
+from nes.darts.baselearner_train.model_imagenet import DARTSByGenotype as model_tiny
 
 # oneshot NAS
-from nes.randomNAS_release.benchmarks.cnn.darts.darts_wrapper_discrete import DartsWrapper
+from nes.darts.baselearner_train.oneshot.darts_wrapper_discrete import DartsWrapper
 
 # nb201 specific
 from nes.utils.nb201.models import get_cell_based_tiny_net, CellStructure
 from nes.utils.nb201.config_utils import dict2config
 from nes.utils.nb201.api_utils import ResultsCount
 
+
 def load_nn_module(state_dict_dir, genotype, init_seed=0, dataset='fmnist',
-                   oneshot=False, **kwargs):
+                   oneshot=False, nb201=False, **kwargs):
     # init_seed only used then genotype is None, i.e. when querying nasbench201
 
-    if genotype is not None:
+    if not nb201:
         # seed_init can be anything because we will load a state_dict 
         # anyway, so initialization doesn't matter.
         if not oneshot:
@@ -74,6 +70,7 @@ def load_nn_module(state_dict_dir, genotype, init_seed=0, dataset='fmnist',
                 odata = xdata['full']['all_results'][(dataset_to_nb201_dict[dataset],
                                                       seed)]
 
+        # load the saved model weights from the official NB201 dataset
         result = ResultsCount.create_from_state_dict(odata)
         result.get_net_param()
         arch_config = result.get_config(CellStructure.str2structure)
@@ -85,41 +82,27 @@ def load_nn_module(state_dict_dir, genotype, init_seed=0, dataset='fmnist',
 
 
 def create_baselearner(state_dict_dir, genotype, arch_seed, init_seed, scheme,
-                       dataset, device, save_dir, oneshot=False,
+                       dataset, device, save_dir, oneshot=False, nb201=False,
                        n_datapoints=None, **kwargs):
     """
     A function which wraps an nn.Module with the Baselearner container, computes
     predictions and evaluations and finally saves everything.
     """
     assert dataset in ["cifar10", "cifar100", "fmnist", "imagenet", "tiny"]
-    nb201 = True if genotype is None else False
 
     model_nn = load_nn_module(state_dict_dir, genotype, init_seed,
-                              dataset=dataset, oneshot=oneshot, **kwargs)
+                              dataset=dataset, oneshot=oneshot, nb201=nb201,
+                              **kwargs)
 
     severities = range(6) if (dataset in ["cifar10", "cifar100", "tiny"]) else range(1)
 
     model_id = model_seeds(arch_seed, init_seed, scheme)
-    baselearner = Baselearner(model_id=model_id, severities=severities, device=torch.device('cpu'),
-                              nn_module=model_nn)
+    baselearner = Baselearner(model_id=model_id, severities=severities,
+                              device=device, nn_module=model_nn)
 
     # Load dataloaders (val, test, all severities) to make predictions on
-    if dataset == 'fmnist':
-        dataloaders = create_dataloader_dict_fmnist(device)
-    elif dataset in ['cifar10', 'cifar100']:
-        dataloaders = create_dataloader_dict_cifar(device, dataset, nb201,
-                                                   n_datapoints)
-    elif dataset == 'imagenet':
-        dataloaders = create_dataloader_dict_imagenet(device, dataset, nb201)
-    elif dataset == 'tiny':
-        dataloaders = create_dataloader_dict_tiny(device)
-
-    if dataset == 'imagenet':
-        num_classes = 120
-    elif dataset == 'tiny':
-        num_classes = 200
-    else:
-        num_classes = 100 if dataset == 'cifar100' else 10
+    dataloaders, num_classes = get_dataloaders_and_classes(dataset, device,
+                                                           nb201, n_datapoints)
 
     baselearner.to_device(device)
     baselearner.compute_preds(dataloaders, severities, num_classes=num_classes)
@@ -127,6 +110,5 @@ def create_baselearner(state_dict_dir, genotype, arch_seed, init_seed, scheme,
 
     # saves the model_id, nn_module and preds & evals.
     baselearner.save(save_dir)
-
     return baselearner
 

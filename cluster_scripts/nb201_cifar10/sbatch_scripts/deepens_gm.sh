@@ -16,9 +16,8 @@ source activate pt1.3
 # Arrayjob
 PYTHONPATH=$PWD python nes/optimizers/scripts/train_deepens_baselearner.py \
 --seed_id $SLURM_ARRAY_TASK_ID \
---working_directory "experiments-nb201/cifar10/baselearners/deepens_minimum/" \
---dataset cifar10 --global_seed 1 --nb201 \
---num_epochs 200 --scheme deepens_minimum --train_global_optima
+--working_directory "experiments/nb201/cifar10/baselearners/deepens_minimum/" \
+--dataset cifar10 --global_seed 1 --scheme deepens_minimum --train_global_optima
 
 # Done
 echo "DONE"

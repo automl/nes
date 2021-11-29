@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH -a 0-2
 #SBATCH -p alldlc_gpu-rtx2080
-#SBATCH -x dlcgpu37,dlcgpu26
 #SBATCH -o ./cluster_logs/deepens_rs/%A-%a.o
 #SBATCH -e ./cluster_logs/deepens_rs/%A-%a.e
 #SBATCH --gres=gpu:1  # reserves GPUs
@@ -21,10 +20,10 @@ source venv/bin/activate
 # Arrayjob
 PYTHONPATH=$PWD python nes/optimizers/scripts/train_deepens_baselearner.py \
 	--arch_id $1 --seed_id $SLURM_ARRAY_TASK_ID \
-	--working_directory "experiments-nb201/cifar10/baselearners/deepens_rs/" \
-	--dataset cifar10 --num_epochs 200 --scheme deepens_rs \
-	--arch_path "experiments-nb201/cifar10/baselearners/nes_rs/run_${2}/random_archs" \
-	--global_seed $2 --nb201
+	--working_directory "experiments/nb201/cifar10/baselearners/deepens_rs/" \
+	--dataset cifar10 --scheme deepens_rs \
+	--arch_path "experiments/nb201/cifar10/baselearners/nes_rs/run_${2}/random_archs" \
+	--global_seed $2
 
 # Done
 echo "DONE"

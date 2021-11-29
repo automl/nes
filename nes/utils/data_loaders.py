@@ -83,7 +83,54 @@ class TensorDatasetWithTrans(Dataset):
         return self.tensors[0].size(0)
 
 
-def build_dataloader_cifar_c(batch_size, corruption, severity, train, device,
+def build_dataloader_fmnist(batch_size, train, device, sample_indices=None,
+                            **kwargs):
+    '''
+    Builds a FMNIST dataloader.
+    :param batch_size: batch size of loader
+    :param train: train split or not (bool)
+    :param device: device to load the data onto
+    :param sample_indices: range of indices of the datapoints to include (tuple
+        of length 2). e.g. (20000, 30000) when Train = True, or (1000, 5000) is
+        train = False.
+    :return: data loader
+    '''
+    if sample_indices is None:
+        start_index = 0
+        end_index = 60000 if train else 10000
+        sample_indices = list(range(start_index, end_index))
+
+    transformations = [trn.ToTensor(), trn.ToPILImage(),
+                       trn.Grayscale(num_output_channels=3),
+                       trn.ToTensor(),
+                       trn.Normalize((0.5, 0.5, 0.5),
+                                     (0.5, 0.5, 0.5))]
+    trans = trn.Compose(transformations)
+
+    dataset = dset.FashionMNIST(DATA_PATH, train=train, transform=trans,
+                                download=True)
+
+    if train:
+        mask = [False] * len(dataset)
+        for i in sample_indices:
+            mask[i] = True
+
+    loader_full = DataLoader(
+        dataset=dataset,
+        sampler=SubsetRandomSampler(np.where(mask)[0]) if train else None,
+        batch_size=len(dataset),
+        shuffle=False,
+        pin_memory=False
+    )
+
+    torch.manual_seed(0)
+    all_data = [data.to(device) for data in next(iter(loader_full))]
+    dataset = torch.utils.data.TensorDataset(*all_data)
+    data_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True)
+    return data_loader
+
+def build_dataloader_cifar_c(batch_size, corruption='clean', severity=0,
+                             train=True, device=torch.device('cpu'),
                              sample_indices=None, dataset='cifar10',
                              nb201=False):
     '''
@@ -119,10 +166,7 @@ def build_dataloader_cifar_c(batch_size, corruption, severity, train, device,
 
     if sample_indices is None:
         start_index = 0
-        if train:
-            end_index = 50000
-        else:
-            end_index = 10000
+        end_index = 50000 if train else 10000
         sample_indices = list(range(start_index, end_index))
 
     if corruption != "clean":
@@ -166,14 +210,14 @@ def build_dataloader_cifar_c(batch_size, corruption, severity, train, device,
     dataset = TensorDatasetWithTrans(tensors=(images, labels), transform=trans)
 
     data_loader = DataLoader(dataset=dataset, batch_size=batch_size,
-                             shuffle=False, pin_memory=False)
+                             shuffle=False if not train else True, pin_memory=False)
     return data_loader
 
 
 def build_dataloader_cifar_c_mixed(batch_size, validation_corruptions,
                                    severity, train, device,
                                    sample_indices=None, dataset='cifar10',
-                                   nb201=False):
+                                   nb201=False, **kwargs):
     '''
     Builds a CIFAR-10 or CIFAR-100 dataloader of corrupted images. The
         corruption for each datapoint is picked randomly from a set of corruptions
@@ -199,10 +243,7 @@ def build_dataloader_cifar_c_mixed(batch_size, validation_corruptions,
 
     if sample_indices is None:
         start_index = 0
-        if train:
-            end_index = 50000
-        else:
-            end_index = 10000
+        end_index = 50000 if train else 10000
         sample_indices = list(range(start_index, end_index))
 
     corruption_list = corruption_choices(validation_corruptions)
@@ -253,7 +294,7 @@ def build_dataloader_cifar_c_mixed(batch_size, validation_corruptions,
     return data_loader
 
 
-def build_dataloader_tiny(batch_size, severity, mode, n_workers=4):
+def build_dataloader_tiny(batch_size, severity=0, mode='train', n_workers=4, **kwargs):
     '''
     Builds a Tiny-ImageNet dataloader of corrupted images. The corruption type
         and severity are inputs.

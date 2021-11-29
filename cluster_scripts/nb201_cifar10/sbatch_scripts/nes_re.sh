@@ -16,7 +16,7 @@ source venv/bin/activate
 # Arrayjob
 PYTHONPATH=$PWD python nes/optimizers/scripts/run_nes_re_nb201.py \
 --num_iterations 400 --num_epochs 200 --population_size 50 --sample_size 10 \
---working_directory experiments-nb201/cifar10/baselearners/nes_re --severity_list "0 5" \
+--working_directory experiments/nb201/cifar10/baselearners/nes_re --severity_list "0 5" \
 --global_seed $SLURM_ARRAY_TASK_ID --scheme nes_re --dataset cifar10 --nb201
 
 # Done

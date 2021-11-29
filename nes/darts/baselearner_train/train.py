@@ -5,8 +5,9 @@ from pathlib import Path
 
 from nes.optimizers.baselearner_train.model import DARTSByGenotype as model_cifar
 from nes.optimizers.baselearner_train.model_imagenet import DARTSByGenotype as model_tiny
-from nes.optimizers.baselearner_train.utils import build_dataloader_by_sample_idx as build_dataloader
-from nes.utils.cifar10_C_loader import build_dataloader_tiny
+from nes.utils.data_loaders import build_dataloader_tiny as dataloader_tiny, \
+                                   build_dataloader_fmnist as dataloader_fmnist, \
+                                   build_dataloader_cifar_c as dataloader_cifar
 
 
 def run_train(seed, arch_id, arch, num_epochs, bslrn_batch_size, exp_name,
@@ -48,22 +49,26 @@ def run_train(seed, arch_id, arch, num_epochs, bslrn_batch_size, exp_name,
 
     genotype = eval(arch)
 
-    if dataset == tiny:
+    if dataset == 'tiny':
         model_type = model_tiny
-        dataloader_train = build_dataloader_tiny(
-            batch_size=bslrn_batch_size, severity=0, mode='train',
-            n_workers=n_workers)
-        dataloader_val = build_dataloader_tiny(
-            batch_size=bslrn_batch_size, severity=0, mode='val',
-            n_workers=n_workers)
+        dataloader = dataloader_tiny
     else:
         model_type = model_cifar
         end_idx = 50000 if dataset == 'fmnist' else 40000
-
+        dataloader = dataloader_fmnist if dataset == 'fmnist' else dataloader_cifar
         if n_datapoints is not None: end_idx = n_datapoints
-        dataloader_train = build_dataloader(data_path, bslrn_batch_size, mode,
-                                            dataset, (0, end_idx), device,
-                                            put_data_on_gpu=True)
+
+    dataloader_train = dataloader(
+        bslrn_batch_size, train=True, device=device,
+        sample_indices=list(range(0, end_idx)), mode='train',
+        dataset=dataset, n_workers=n_workers)
+    if debug:
+        end_idx_val = 60000 if dataset == 'fmnist' else 50000
+        dataloader_val = dataloader(
+            bslrn_batch_size, train=True, device=device, mode='val',
+            sample_indices=list(range(end_idx, end_idx_val)),
+            dataset=dataset, n_workers=n_workers)
+    else:
         dataloader_val = None
 
     logger.info(f"[{mode}] (arch {arch_id}: {genotype}, init: {seed})...")

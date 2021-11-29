@@ -25,7 +25,7 @@ def removekey(d, key):
     return r
 
 
-class RegularizedEvolution(base_config_generator):
+class RegularizedEvolutionSampler(base_config_generator):
     def __init__(self, working_dir, configspace, population_size=50,
                  pop_sample_size=10, scheme='nes_re', esa='beam_search',
                  severity_list=[0, 5], warmstart_dir=None, **kwargs):

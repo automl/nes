@@ -169,7 +169,7 @@ class REWorker(Worker):
         Returns:
             ConfigSpace.ConfigurationSpace: a ConfigSpace object
         """
-        with open(os.path.join('nes/optimizers/space_encoding/configspace.json'),
+        with open(os.path.join('nes/darts/baselearner_train/space_encoding/configspace.json'),
                   'r') as fh:
             json_string = fh.read()
             config_space = config_space_json_r_w.read(json_string)

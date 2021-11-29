@@ -16,9 +16,9 @@ source venv/bin/activate
 # Arrayjob
 PYTHONPATH=$PWD python nes/optimizers/scripts/train_deepens_baselearner.py \
 --seed_id $SLURM_ARRAY_TASK_ID \
---working_directory "experiments-nb201/cifar10/baselearners/deepens_darts/" \
---dataset cifar10 --num_epochs 200 --scheme deepens_darts \
---train_darts --global_seed $1 --nb201
+--working_directory "experiments/nb201/cifar10/baselearners/deepens_darts/" \
+--dataset cifar10 --scheme deepens_darts \
+--train_darts --global_seed $1
 
 # Done
 echo "DONE"

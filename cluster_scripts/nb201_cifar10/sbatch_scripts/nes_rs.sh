@@ -15,7 +15,7 @@ source venv/bin/activate
 
 # Arrayjob
 PYTHONPATH=$PWD python nes/optimizers/scripts/run_nes_rs.py \
---working_directory=experiments_nb201/cifar10/baselearners/nes_rs --arch_id \
+--working_directory=experiments/nb201/cifar10/baselearners/nes_rs --arch_id \
 $SLURM_ARRAY_TASK_ID --seed_id $SLURM_ARRAY_TASK_ID --dataset cifar10 \
 --num_epochs 200 --global_seed $1 --nb201
 
