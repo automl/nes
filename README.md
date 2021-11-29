@@ -114,11 +114,11 @@ For more details, please refer to the original [paper](https://arxiv.org/abs/200
 
 ## Citation
 ```
-@article{zaidi20,
-  author  = {Sheheryar Zaidi and Arber Zela and Thomas Elsken and Chris Holmes and Frank Hutter and Yee Whye Teh},
-  title   = {{Neural} {Ensemble} {Search} for {Uncertainty} {Estimation} and {Dataset} {Shift}},
-  journal = {arXiv:2006.08573 {cs.LG}},
-  year    = {2020},
-  month   = jun,
+@inproceedings{zaidi2021neural,
+  title={Neural Ensemble Search for Uncertainty Estimation and Dataset Shift},
+  author={Sheheryar Zaidi and Arber Zela and Thomas Elsken and Christopher C. Holmes and Frank Hutter and Yee Whye Teh},
+  booktitle={Thirty-Fifth Conference on Neural Information Processing Systems},
+  year={2021},
+  url={https://openreview.net/forum?id=HiYDAwAGWud}
 }
 ```

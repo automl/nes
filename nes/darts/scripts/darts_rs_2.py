@@ -7,9 +7,9 @@ warnings.filterwarnings('ignore')
 import ConfigSpace as CS
 import ConfigSpace.hyperparameters as CSH
 
-from nes.optimizers.baselearner_train.utils import sample_random_genotype
-from nes.optimizers.baselearner_train.genotypes import Genotype, DARTS
-from nes.optimizers.cluster_worker import REWorker as Worker
+from nes.darts.baselearner_train.utils import sample_random_genotype
+from nes.darts.baselearner_train.genotypes import Genotype, DARTS
+from nes.darts.cluster_worker import DARTSWorker as Worker
 from nes.ensemble_selection.config import BUDGET
 
 

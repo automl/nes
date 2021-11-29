@@ -45,14 +45,8 @@ if __name__ == "__main__":
                         help='scheme name, i.e. nes or deepens variants')
     mutex.add_argument('--train_darts', action='store_true', default=False,
                         help='evaluate the arch found by DARTS')
-    mutex.add_argument('--train_gdas', action='store_true', default=False,
-                        help='evaluate the arch found by GDAS')
-    mutex.add_argument('--train_global_optima', action='store_true', default=False,
-                        help='evaluate the best architecture in nb201')
     mutex.add_argument('--train_amoebanet', action='store_true', default=False,
                         help='evaluate the arch found by RE')
-    parser.add_argument('--nb201', action='store_true', default=False,
-                        help='NAS-bench-201 space')
     parser.add_argument('--n_workers', type=int, default=4,
                         help='Number of CPU workers')
     parser.add_argument('--grad_clip', action='store_true', default=False,
@@ -74,70 +68,44 @@ if __name__ == "__main__":
 
     print(args)
 
-    # load either DARTS, AmoebaNet, or the incumbent architectures from NES-RS
-    opt_to_id = {
-        'cifar10' : {'DARTS'    : '001835', # also in c100 and img
-                     'GDAS'     : '003928', # also in c100 and img
-                     'Optima'   : '014174'},
-        'cifar100': {'DARTS'    : '002057', # also 561, 12830, 3521
-                     'GDAS'     : '003203', # also in img
-                     'Optima'   : '013934'},
-        'imagenet': {'DARTS'    : '004771', # also 1728
-                     'GDAS'     : '003928', # also in c100 and c10
-                     'Optima'   : '003621'},
-    }
-
-    if args.nb201:
-        assert not args.train_amoebanet, "Cannot evaluate AmoebaNet on NB201!"
-        if args.train_darts:
-            genotype = opt_to_id[args.dataset]['DARTS']
-        elif args.train_gdas:
-            genotype = opt_to_id[args.dataset]['GDAS']
-        elif args.train_global_optima:
-            genotype = opt_to_id[args.dataset]['Optima']
-        else:
-            with open(os.path.join(args.arch_path, 'arch_%d.txt'%args.arch_id), 'r') as f:
-                genotype = f.read()
+    if args.train_darts:
+        genotype = DARTS
+    elif args.train_amoebanet:
+        genotype = AmoebaNet
     else:
-        assert not args.train_gdas, "GDAS not implemented yet!"
-        if args.train_darts:
-            genotype = DARTS
-        elif args.train_amoebanet:
-            genotype = AmoebaNet
-        else:
-            with open(os.path.join(args.arch_path, 'arch_%d.txt'%args.arch_id), 'r') as f:
-                genotype = eval(f.read())
+        with open(os.path.join(args.arch_path, 'arch_%d.txt'%args.arch_id), 'r') as f:
+            genotype = eval(f.read())
 
-        # generate a random architecture
-        np.random.seed(arch_id)
-        random.seed(arch_id)
+    # generate a random architecture
+    np.random.seed(arch_id)
+    random.seed(arch_id)
 
-        cs = CS.ConfigurationSpace()
-        cs.add_hyperparameter(CSH.UniformFloatHyperparameter('lr', lower=0.001,
-                                                             upper=0.1,
-                                                             log=True))
-        cs.add_hyperparameter(CSH.UniformFloatHyperparameter('wd',
-                                                             lower=3e-10,
-                                                             upper=3e-4,
-                                                             log=True))
-        cs.add_hyperparameter(CSH.UniformFloatHyperparameter('anchor',
-                                                             lower=1e-3,
-                                                             upper=1.0,
-                                                             log=True))
-        hypers = cs.sample_configuration().get_dictionary()
-        args.lr = hypers['lr']
-        args.wd = hypers['wd']
-        args.anch_coeff = hypers['anchor']
-        to_save = (args.lr, args.wd, args.anch_coeff)
+    cs = CS.ConfigurationSpace()
+    cs.add_hyperparameter(CSH.UniformFloatHyperparameter('lr', lower=0.001,
+                                                         upper=0.1,
+                                                         log=True))
+    cs.add_hyperparameter(CSH.UniformFloatHyperparameter('wd',
+                                                         lower=3e-10,
+                                                         upper=3e-4,
+                                                         log=True))
+    cs.add_hyperparameter(CSH.UniformFloatHyperparameter('anchor',
+                                                         lower=1e-3,
+                                                         upper=1.0,
+                                                         log=True))
+    hypers = cs.sample_configuration().get_dictionary()
+    args.lr = hypers['lr']
+    args.wd = hypers['wd']
+    args.anch_coeff = hypers['anchor']
+    to_save = (args.lr, args.wd, args.anch_coeff)
 
-        hyper_save_foldername = os.path.join(args.working_directory,
-                                             'random_hyper')
-        if not os.path.exists(hyper_save_foldername):
-            os.makedirs(hyper_save_foldername, exist_ok=True)
+    hyper_save_foldername = os.path.join(args.working_directory,
+                                         'random_hyper')
+    if not os.path.exists(hyper_save_foldername):
+        os.makedirs(hyper_save_foldername, exist_ok=True)
 
-        with open(os.path.join(hyper_save_foldername,
-                               'hyper_%d.txt'%args.arch_id), 'w') as f:
-            f.write('{}'.format(to_save))
+    with open(os.path.join(hyper_save_foldername,
+                           'hyper_%d.txt'%args.arch_id), 'w') as f:
+        f.write('{}'.format(to_save))
 
     # no need for a master node in the NES-RS case. Just instantiate a worker
     # that trains the architectures and computes predictions on clean and
@@ -148,7 +116,7 @@ if __name__ == "__main__":
                     run_id=args.arch_id,
                     scheme=args.scheme,
                     dataset=args.dataset,
-                    nb201=args.nb201,
+                    nb201=False,
                     n_workers=args.n_workers,
                     lr=args.lr,
                     wd=args.wd,

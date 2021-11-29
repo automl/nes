@@ -2,8 +2,8 @@ import os
 import warnings
 warnings.filterwarnings('ignore')
 
-from nes.optimizers.baselearner_train.genotypes import Genotype, DARTS, AmoebaNet
-from nes.optimizers.cluster_worker import REWorker as Worker
+from nes.darts.baselearner_train.genotypes import Genotype, DARTS, AmoebaNet
+from nes.darts.cluster_worker import DARTSWorker as Worker
 
 
 if __name__ == "__main__":

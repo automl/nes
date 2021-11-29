@@ -3,8 +3,8 @@ import logging
 import torch
 from pathlib import Path
 
-from nes.optimizers.baselearner_train.model import DARTSByGenotype as model_cifar
-from nes.optimizers.baselearner_train.model_imagenet import DARTSByGenotype as model_tiny
+from nes.darts.baselearner_train.model import DARTSByGenotype as model_cifar
+from nes.darts.baselearner_train.model_imagenet import DARTSByGenotype as model_tiny
 from nes.utils.data_loaders import build_dataloader_tiny as dataloader_tiny, \
                                    build_dataloader_fmnist as dataloader_fmnist, \
                                    build_dataloader_cifar_c as dataloader_cifar

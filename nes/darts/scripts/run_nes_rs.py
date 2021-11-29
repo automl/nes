@@ -5,8 +5,8 @@ import numpy as np
 import pickle
 warnings.filterwarnings('ignore')
 
-from nes.optimizers.baselearner_train.utils import sample_random_genotype
-from nes.optimizers.cluster_worker import REWorker as Worker
+from nes.darts.baselearner_train.utils import sample_random_genotype
+from nes.darts.cluster_worker import REWorker as Worker
 from nes.ensemble_selection.config import BUDGET
 
 
@@ -27,24 +27,32 @@ if __name__ == "__main__":
                         help='Mini-batch size to train the baselearner')
     parser.add_argument('--lr', type=float, default=0.025,
                         help='leaning rate to train the baselearner')
+    parser.add_argument('--wd', type=float, default=3e-4,
+                        help='weight decay to train the baselearner')
     parser.add_argument('--n_layers', type=int, default=14,
                         help='Mini-batch size to train the baselearner')
     parser.add_argument('--init_channels', type=int, default=48,
                         help='Mini-batch size to train the baselearner')
     parser.add_argument('--scheduler', type=str, default='cosine',
                         help='scheme name, i.e. nes or deepens variants')
+    parser.add_argument('--grad_clip', action='store_true', default=False,
+                        help='debug mode: run for a single mini-batch')
     parser.add_argument('--dataset', type=str, default='tiny',
                         help='image dataset')
     parser.add_argument('--scheme', type=str, default='nes_rs',
                         help='scheme name, i.e. nes or deepens variants')
-    parser.add_argument('--nb201', action='store_true', default=False,
-                        help='NAS-bench-201 space')
     parser.add_argument('--n_workers', type=int, default=4,
                         help='Number of CPU workers')
     parser.add_argument('--n_datapoints', type=int, default=40000,
                         help='train size')
-    parser.add_argument('--grad_clip', action='store_true', default=False,
+    parser.add_argument('--full_train', action='store_true', default=False,
                         help='debug mode: run for a single mini-batch')
+    parser.add_argument('--only_predict', action='store_true', default=False,
+                        help='use saved model to evaluate')
+    parser.add_argument('--oneshot', action='store_true', default=False,
+                        help='use oneshot model to evaluate')
+    parser.add_argument('--saved_model', type=str, default=None,
+                        help='directory where the oneshot model is')
     parser.add_argument('--debug', action='store_true', default=False,
                         help='debug mode: run for a single mini-batch')
     args = parser.parse_args()
@@ -62,16 +70,7 @@ if __name__ == "__main__":
     genotype_save_foldername = os.path.join(args.working_directory,
                                             'random_archs')
 
-    if args.nb201:
-        #nb201_id = str(random.choice(range(15625)))
-        # load list of possible ids
-        with open('nes/utils/nb201/configs/{}.pkl'.format(args.dataset), 'rb') as f:
-            list_of_ids = pickle.load(f)
-        nb201_id = str(random.choice(list_of_ids))
-        print(nb201_id)
-        genotype = '0'*(6-len(nb201_id)) + nb201_id
-    else:
-        genotype = sample_random_genotype(steps=4, multiplier=4)
+    genotype = sample_random_genotype(steps=4, multiplier=4)
 
     if not os.path.exists(genotype_save_foldername):
         os.makedirs(genotype_save_foldername, exist_ok=True)
@@ -91,9 +90,14 @@ if __name__ == "__main__":
                     scheme=args.scheme,
                     dataset=args.dataset,
                     lr=args.lr,
-                    nb201=args.nb201,
+                    wd=args.wd,
                     n_workers=args.n_workers,
                     n_datapoints=args.n_datapoints,
+                    nb201=False,
+                    full_train=args.full_train,
+                    oneshot=args.oneshot,
+                    only_predict=args.only_predict,
+                    saved_model=args.saved_model,
                     debug=args.debug)
 
     worker.compute(genotype,

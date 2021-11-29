@@ -13,10 +13,10 @@ from nes.optimizers.baselearner_train.train import run_train
 from nes.optimizers.baselearner_train.genotypes import Genotype
 
 
-class REWorker(Worker):
+class DARTSWorker(Worker):
     def __init__(self, working_directory, num_epochs, batch_size, *args,
                  scheme='nes_re', dataset='fmnist', warmstart_dir=None,
-                 debug=False, nb201=False, n_workers=4, only_predict=False,
+                 debug=False, n_workers=4, only_predict=False,
                  lr=0.025, wd=3e-4, drop_prob=0.3, anchor=False, anch_coeff=1,
                  full_train=False, n_datapoints=None,
                  oneshot=False, saved_model=None, **kwargs):
@@ -30,6 +30,19 @@ class REWorker(Worker):
             warmstart_dir     (str): directory where previous results are stored.
                 Used only when it is not None
             debug            (bool): run the train only for one mini-batch when True
+            n_workers         (int): number of workers in pytorch dataloader
+            only_predict     (bool): run only inference for the saved models
+            lr              (float): learning rate to train models
+            wd              (float): weight decay value during model training
+            drop_prob       (float): scheduled drop path max probability
+            anchor           (bool): enable or not anchored ensembles' training
+            anch_coeff      (float): anchor coefficient
+            full_train       (bool): set to True if using all the examples in
+                the training set.
+            n_datapoints      (int): number of datapoints used for training
+            oneshot          (bool): if True use the predictions coming from
+                the weight sharing model.
+            saved_model       (str): path to the oneshot saved model weights
 
         Returns:
             None
@@ -45,7 +58,6 @@ class REWorker(Worker):
         self.scheme = scheme
         self.warmstart_dir = warmstart_dir
         self.dataset = dataset
-        self.nb201 = nb201
         self.n_workers = n_workers
         self.data_path = 'data/tiny-imagenet-200/' if dataset == 'tiny' else 'data/'
         self.only_predict = only_predict
@@ -90,45 +102,40 @@ class REWorker(Worker):
         # directory where to write the training results
         dest_dir = os.path.join(self.working_directory, 'run_'+str(model_id))
 
-        if not isinstance(config, Genotype) and not self.nb201:
+        if not isinstance(config, Genotype):
             # hpbandster passes a configspace object instead
             genotype = parse_config(config, self.get_configspace())
         else:
             genotype = config
 
-        if not self.nb201:
-            if not self.only_predict:
-                # compute the baselearner prediction and return
-                run_train(seed=seed_id,
-                          arch_id=model_id,
-                          arch=str(genotype),
-                          num_epochs=self.num_epochs,
-                          bslrn_batch_size=self.batch_size,
-                          exp_name=dest_dir,
-                          logger=self.logger,
-                          data_path=self.data_path,
-                          mode='train',
-                          dataset=self.dataset,
-                          debug=self.debug,
-                          anchor=self.anchor,
-                          anch_coeff=self.anch_coeff,
-                          n_workers=self.n_workers,
-                          lr=self.lr,
-                          wd=self.wd,
-                          drop_prob=self.drop_prob,
-                          full_train=self.full_train,
-                          n_datapoints=self.n_datapoints,
-                          **kwargs)
+        if not self.only_predict:
+            # compute the baselearner prediction and return
+            run_train(seed=seed_id,
+                      arch_id=model_id,
+                      arch=str(genotype),
+                      num_epochs=self.num_epochs,
+                      bslrn_batch_size=self.batch_size,
+                      exp_name=dest_dir,
+                      logger=self.logger,
+                      data_path=self.data_path,
+                      mode='train',
+                      dataset=self.dataset,
+                      debug=self.debug,
+                      anchor=self.anchor,
+                      anch_coeff=self.anch_coeff,
+                      n_workers=self.n_workers,
+                      lr=self.lr,
+                      wd=self.wd,
+                      drop_prob=self.drop_prob,
+                      full_train=self.full_train,
+                      n_datapoints=self.n_datapoints,
+                      **kwargs)
 
-            if self.oneshot:
-                model_ckpt = self.saved_model
-            else:
-                model_ckpt = os.path.join(dest_dir,
-                                          f'arch_{model_id}_init_{seed_id}_epoch_{self.num_epochs}.pt')
+        if self.oneshot:
+            model_ckpt = self.saved_model
         else:
-            model_ckpt =\
-                f'/data/aad/image_datasets/nb201_new/NAS-BENCH-102-4-v1.0-archive/{config}-FULL.pth'
-            genotype = None
+            model_ckpt = os.path.join(dest_dir,
+                                      f'arch_{model_id}_init_{seed_id}_epoch_{self.num_epochs}.pt')
 
         # create a nes.ensemble_selection.containers.Baselearner object from
         # the trained architecture and compute the predictions for different
@@ -142,13 +149,12 @@ class REWorker(Worker):
                                          device=device,
                                          save_dir=dest_dir,
                                          n_datapoints=self.n_datapoints,
+                                         nb201=False,
                                          oneshot=self.oneshot,
                                          **kwargs)
 
         print('BASLEARNER data:')
         print('LR: {:.6f}, WD: {:.6f}, anch: {:.6f}'.format(self.lr, self.wd, self.anch_coeff))
-        print(baselearner.evals)
-
 
         return ({
             # this is a mandatory field to run hpbandster. Not used by NES-RE

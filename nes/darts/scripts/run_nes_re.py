@@ -11,7 +11,7 @@ from hpbandster.core.nameserver import NameServer, nic_name_to_host
 from hpbandster.utils import *
 from ConfigSpace.read_and_write import json as config_space_json_r_w
 
-from nes.optimizers.cluster_worker import REWorker as Worker
+from nes.darts.cluster_worker import DARTSWorker as Worker
 from nes.optimizers.re import RegularizedEvolution
 
 
