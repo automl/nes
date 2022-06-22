@@ -6,6 +6,6 @@ opencv-python
 scikit-image
 Wand
 tqdm
-numpy==1.16.4
+numpy==1.22.0
 torch==1.4.0
 torchvision==0.4.2
