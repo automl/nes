@@ -6,13 +6,8 @@ import argparse
 from collections import defaultdict
 from pathlib import Path
 
-from nes.ensemble_selection.utils import (
-    model_seeds,
-    args_to_device,
-    POOLS,
-    SCHEMES,
-)
-from nes.ensemble_selection.config import BUDGET, PLOT_EVERY
+from nes.ensemble_selection.utils import args_to_device
+from nes.ensemble_selection.config import BUDGET, PLOT_EVERY, model_seeds, POOLS, SCHEMES
 from nes.ensemble_selection.containers import Ensemble, Baselearner, load_baselearner
 from nes.ensemble_selection.esas import registry as esas_registry, run_esa
 
@@ -43,7 +38,7 @@ parser.add_argument(
     "--pool_name",
     type=str,
     default="nes_rs",
-    choices=["nes_rs", "nes_re", "darts_esa", "amoebanet_esa", "nes_rs_esa",
+    choices=["nes_rs", "nes_re", "nes_bo", "darts_esa", "amoebanet_esa", "nes_rs_esa",
              "darts_rs", "darts_hyper", "joint", "nes_rs_oneshot",
              "nes_rs_darts"],
     help="Pool of baselearners used for ensemble selection. Default: nes_rs.",

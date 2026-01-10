@@ -1,12 +1,8 @@
 """This finds the incumbents from the nes_rs sampled base learners.
 """
 
-from nes.ensemble_selection.utils import (
-    model_seeds,
-    args_to_device,
-)
-from nes.ensemble_selection.config import BUDGET, PLOT_EVERY
-from nes.ensemble_selection.utils import POOLS
+from nes.ensemble_selection.utils import args_to_device
+from nes.ensemble_selection.config import BUDGET, PLOT_EVERY, model_seeds, POOLS
 from nes.ensemble_selection.containers import load_baselearner
 import dill as pickle
 import os

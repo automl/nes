@@ -268,7 +268,7 @@ def create_dataloader_dict_imagenet(device):
 
 
 def create_dataloader_dict_cifar(device, dataset='cifar10', nb201=False,
-                                 n_datapoints=None):
+                                 n_datapoints=None, severities=range(1)):
     dataloaders = defaultdict(dict)
 
     if nb201:
@@ -287,7 +287,7 @@ def create_dataloader_dict_cifar(device, dataset='cifar10', nb201=False,
         else:
             samples_valid = list(range(n_datapoints, 50000))
 
-    for severity in range(0, 6):
+    for severity in severities:
         if severity == 0:
             dataloaders["val"][str(severity)] = build_dataloader_cifar_c(
                 batch_size=100,
@@ -352,12 +352,13 @@ def create_dataloader_dict_fmnist(device):
     return dataloaders
 
 
-def get_dataloaders_and_classes(dataset, device, nb201, n_datapoints):
+def get_dataloaders_and_classes(dataset, device, nb201, n_datapoints,
+                                severities=range(1)):
     if dataset == 'fmnist':
         dataloaders = create_dataloader_dict_fmnist(device)
     elif dataset in ['cifar10', 'cifar100']:
         dataloaders = create_dataloader_dict_cifar(device, dataset, nb201,
-                                                   n_datapoints)
+                                                   n_datapoints, severities)
     elif dataset == 'imagenet':
         dataloaders = create_dataloader_dict_imagenet(device)
     elif dataset == 'tiny':

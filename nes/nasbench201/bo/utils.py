@@ -6,6 +6,7 @@ import numpy as np
 from nes.ensemble_selection.config import model_seeds
 from nes.ensemble_selection.esas import registry as esas_registry
 from nes.ensemble_selection.esas import run_esa
+from nes.ensemble_selection.esas import eval_ensemble
 from nes.ensemble_selection.containers import load_baselearner
 from nes.nasbench201 import NB201Worker as Worker
 
@@ -23,6 +24,15 @@ get_genotype = lambda x: '0'*(6-len(x)) + x
 get_arch_str = lambda op_list: '|{}~0|+|{}~0|{}~1|+|{}~0|{}~1|{}~2|'.format(*op_list)
 
 
+def make_and_save_preds(surrogate, xtrain, old_predictions):
+    train_preds = []
+    for surr in surrogate:
+        train_preds.append(np.squeeze(surr.predict(xtrain).detach().cpu().numpy()))
+    if len(old_predictions) == 0:
+        return np.array(train_preds)
+    else:
+        return np.hstack([np.array(old_predictions), np.array(train_preds)])
+
 def select_baselearners(evaluation_pool, sample_size, scheme, working_directory, esa,
                       severity_list):
     population_baselearners = {
@@ -38,33 +48,47 @@ def select_baselearners(evaluation_pool, sample_size, scheme, working_directory,
                          population=population_baselearners,
                          esa=esas_registry[esa],
                          val_severity=severity)
-    print('ESA: {}'.format(pop_sample))
+    #print('ESA: {}'.format(pop_sample))
 
     baselearner_ids = pop_sample['models_chosen']
     chosen_baselearners = list(filter(lambda x: x[2] in baselearner_ids,
                                      evaluation_pool))
     assert len(chosen_baselearners) == sample_size
+    loss = pop_sample['loss']
 
-    return chosen_baselearners
+    return chosen_baselearners, loss
 
+
+def evaluate_ensemble(baselearners, working_directory, scheme, severity_list):
+    population_baselearners = {
+        x[2]: load_baselearner(model_id=model_seeds(x[2], x[2], scheme),
+                               load_nn_module=False,
+                               working_dir=os.path.join(working_directory,
+                                                        'run_'+str(x[2])))
+        for x in baselearners
+    }
+    severity = random.choice([int(x) for x in severity_list.split()])
+
+    pop_sample = eval_ensemble(population=population_baselearners,
+                               val_severity=severity)
+    #print('ESA: {}'.format(pop_sample))
+
+    baselearner_ids = pop_sample['models_chosen']
+    chosen_baselearners = list(filter(lambda x: x[2] in baselearner_ids,
+                                      baselearners))
+    loss = pop_sample['loss']
+
+    return chosen_baselearners, loss
 
 def mutate_arch(architecture):
-    # no hidden state mutation since the cell is fully connected
-    # following https://github.com/D-X-Y/AutoDL-Projects/blob/master/exps/algos/R_EA.py#L91
-    # we also remove the 'identity' mutation 
-    mutation = np.random.choice(['op_mutation'])
-    parent = copy.deepcopy(architecture[1]) # work with the list of ops only
-
-    if mutation == 'identity':
-        return parent
-    elif mutation == 'op_mutation':
-        edge_id = random.randint(0, len(parent)-1)
-        edge_op = parent[edge_id]
-        sampled_op = random.choice(OPS)
-        while sampled_op == edge_op:
-            sampled_op = random.choice(OPS)
-        parent[edge_id] = sampled_op
-        return parent
+    parent = copy.deepcopy(architecture)
+    edge_id = random.randint(0, len(parent)-1)
+    edge_op = parent[edge_id]
+    sampled_op = random.choice(range(len(OPS)))
+    while sampled_op == edge_op:
+        sampled_op = random.choice(range(len(OPS)))
+    parent[edge_id] = sampled_op
+    return parent
 
 
 def sample_random_genotype():

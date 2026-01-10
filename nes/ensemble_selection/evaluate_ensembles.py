@@ -13,8 +13,8 @@ from collections import defaultdict, namedtuple
 from pathlib import Path
 
 from nes.ensemble_selection.containers import Ensemble, load_baselearner
-from nes.ensemble_selection.utils import args_to_device, model_seeds, POOLS, SCHEMES
-from nes.ensemble_selection.config import MAX_M, BUDGET
+from nes.ensemble_selection.utils import args_to_device
+from nes.ensemble_selection.config import MAX_M, BUDGET,  model_seeds, POOLS, SCHEMES
 from nes.ensemble_selection.rs_incumbents import get_incumbents
 
 parser = argparse.ArgumentParser()
@@ -64,7 +64,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--method",
-    choices=["nes_rs", "nes_re", "deepens_rs", "deepens_darts",
+    choices=["nes_rs", "nes_re", "nes_bo", "deepens_rs", "deepens_darts",
              "deepens_amoebanet_50k", "nes_rs_oneshot", "nes_re_50k",
              "deepens_darts_anchor", "deepens_darts_50k", "nes_rs_50k",
              "deepens_amoebanet", "deepens_gdas", "deepens_minimum",
@@ -85,7 +85,10 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-torch.cuda.set_device(args_to_device(args.device))
+if args.device == -1:
+    args_to_device(args.device)
+else:
+    torch.cuda.set_device(args_to_device(args.device))
 
 if args.method == "nes_rs_esa":
     POOLS.update(
@@ -212,7 +215,7 @@ ens_attrs = ["evals", "avg_baselearner_evals", "oracle_evals", "disagreement"]
 
 plotting_data = nested_dict()
 
-if args.method in ["nes_rs", "nes_re", "darts_esa", "amoebanet_esa",
+if args.method in ["nes_rs", "nes_re", "nes_bo", "darts_esa", "amoebanet_esa",
                    "nes_rs_oneshot", "nes_re_50k", "nes_rs_darts",
                    "nes_rs_esa", "darts_rs", "darts_hyper", "joint",
                    "nes_rs_50k"]:

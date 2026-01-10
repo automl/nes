@@ -65,8 +65,8 @@ dataset_to_budget = {
     "imagenet": 1000
 }
 
-BUDGET = dataset_to_budget[args.dataset]
-PLOT_EVERY = 25
+#BUDGET = dataset_to_budget[args.dataset]
+PLOT_EVERY = 3
 
 plot_individual_lines = False
 
@@ -134,6 +134,7 @@ colors = {
     "nes_rs_200": "forestgreen",
     "deepens_rs": "dodgerblue",
     "nes_re": "crimson",
+    "nes_bo": "darkorange",
     "nes_re_200": "crimson",
     "deepens_darts": "black",
     "deepens_darts_anchor": "aqua",
@@ -165,12 +166,14 @@ markers = {
     "darts_rs": "h",
     "darts_hyper": ">",
     "joint": "*",
+    "nes_bo": "o",
 }
 label_names = {
-    'nes_rs': 'NES-RS (K = 400)',
+    'nes_rs': 'NES-RS',
     'nes_rs_200': 'NES-RS (K = 200)',
     'deepens_rs': 'DeepEns (RS)',
-    'nes_re': 'NES-RE (K = 400)',
+    'nes_re': 'NES-RE',
+    'nes_bo': 'NES-BO',
     'nes_re_200': 'NES-RE (K = 200)',
     'deepens_minimum': 'DeepEns (best arch.)',
     'deepens_darts': 'DeepEns (DARTS)',
@@ -243,7 +246,7 @@ if args.plot_type == "budget":
 
                         # ax = axes[i][j]
                         for pool_name in args.methods:
-                            if pool_name in ["nes_re", "nes_rs",
+                            if pool_name in ["nes_re", "nes_rs", "nes_bo",
                                              "amoebanet_esa", "darts_esa",
                                              "nes_rs_esa",
                                              "darts_rs", "darts_hyper", "joint"]:
@@ -251,7 +254,7 @@ if args.plot_type == "budget":
                                 ys = []
 
 
-                                if pool_name in ["nes_re", "nes_rs"]:
+                                if pool_name in ["nes_re", "nes_rs", "nes_bo"]:
                                     runs = args.runs
                                 elif pool_name == "nes_rs_esa":
                                     runs = ["run_3"]
@@ -538,14 +541,14 @@ elif args.plot_type == "ensemble_size":
                         for j, M in enumerate(args.Ms):
 
                             if pool_name in ["nes_re", "nes_rs", "nes_re_200",
-                                             "nes_rs_200",
+                                             "nes_rs_200", "nes_bo",
                                              "amoebanet_esa", "darts_esa",
                                              "nes_rs_esa",
                                              "darts_rs", "darts_hyper", "joint"]:
                                 xs = []
                                 ys = []
 
-                                if pool_name in ["nes_re", "nes_rs"]:
+                                if pool_name in ["nes_re", "nes_rs", "nes_bo"]:
                                     runs = args.runs
                                 elif pool_name == "nes_rs_esa":
                                     runs = ["run_3"]
@@ -740,22 +743,8 @@ elif args.plot_type == "ensemble_size":
                     #    ax.legend(handles, labels, framealpha=0.6, fontsize=10)
                     handles, labels = ax.get_legend_handles_labels()
                     labels, handles = zip(*sorted(zip(labels, handles), key=lambda t: t[0]))
-                    if 'deepens_darts_anchor' in args.methods:
-                        labels_new = tuple(['DeepEns (RS)', 'DeepEns (AmoebaNet)',
-                                            'DeepEns (DARTS)', 'AnchoredEns (DARTS)',
-                                            'NES-RS (K = 200)', 'NES-RE (K = 200)'])
-                    else:
-                        labels_new = tuple(['DeepEns (RS)', 'DeepEns (AmoebaNet)',
-                                            'DeepEns (DARTS)', 'NES-RS (K = 200)',
-                                            'NES-RS (K = 400)', 'NES-RE (K = 200)', 'NES-RE (K = 400)'])
-                    idx_old = [labels.index(x) for x in labels_new]
-                    labels = labels_new
-                    handles = tuple([handles[i] for i in idx_old])
                     if (metric == 'loss') and (ens_attr == "evals") and (args.dataset == "cifar10"):
                         ax.legend(handles, labels, framealpha=0.3, fontsize=12)
-
-                    #if (metric == 'loss') and (ens_attr == "oracle_evals") and (severity == 0):
-                        #ax.legend(handles, labels, framealpha=0.3, fontsize=12)
 
                     if (metric == 'loss') and (ens_attr == 'evals') and \
                        (args.dataset == 'tiny') and ('darts_esa' in args.methods):

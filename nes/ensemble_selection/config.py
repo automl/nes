@@ -20,7 +20,7 @@ dataset_to_budget = {
 
 
 # deepens_rs not included here yet since the archs are the best ones from the sample trained for nes_rs. See rs_incumbets.py
-SCHEMES = ["nes_rs", "nes_re", "deepens_darts", "deepens_gdas",
+SCHEMES = ["nes_rs", "nes_re", "nes_bo", "deepens_darts", "deepens_gdas",
            "nes_rs_oneshot", "nes_re_50k", "nes_rs_darts",
            "deepens_minimum", "nes_rs_50k", "deepens_amoebanet_50k",
            "deepens_darts_50k", "deepens_amoebanet", "darts_esa", "amoebanet_esa", "nes_rs_esa",

@@ -17,7 +17,7 @@ from nes.utils.nb201.api_utils import ResultsCount
 
 
 def load_nn_module(state_dict_dir, genotype, init_seed=0, dataset='fmnist',
-                   oneshot=False, nb201=False, **kwargs):
+                   oneshot=False, nb201=False, ignore_missing_seed=True, **kwargs):
     # init_seed only used then genotype is None, i.e. when querying nasbench201
 
     if not nb201:
@@ -56,19 +56,23 @@ def load_nn_module(state_dict_dir, genotype, init_seed=0, dataset='fmnist',
 
         xdata = torch.load(state_dict_dir)
 
-        try:
-            odata = xdata['full']['all_results'][(dataset_to_nb201_dict[dataset],
-                                                  seed)]
-        except KeyError:
-            seed_list.remove(seed)
-            seed = seed_list[0]
+        if ignore_missing_seed:
             try:
                 odata = xdata['full']['all_results'][(dataset_to_nb201_dict[dataset],
                                                       seed)]
             except KeyError:
-                seed = seed_list[1]
-                odata = xdata['full']['all_results'][(dataset_to_nb201_dict[dataset],
+                seed_list.remove(seed)
+                seed = seed_list[0]
+                try:
+                    odata = xdata['full']['all_results'][(dataset_to_nb201_dict[dataset],
+                                                          seed)]
+                except KeyError:
+                    seed = seed_list[1]
+                    odata = xdata['full']['all_results'][(dataset_to_nb201_dict[dataset],
                                                       seed)]
+        else:
+            odata = xdata['full']['all_results'][(dataset_to_nb201_dict[dataset],
+                                                  seed)]
 
         # load the saved model weights from the official NB201 dataset
         result = ResultsCount.create_from_state_dict(odata)
@@ -78,37 +82,51 @@ def load_nn_module(state_dict_dir, genotype, init_seed=0, dataset='fmnist',
         model = get_cell_based_tiny_net(net_config)
         model.load_state_dict(result.get_net_param())
 
-    return model
+    return model, net_config
 
 
 def create_baselearner(state_dict_dir, genotype, arch_seed, init_seed, scheme,
                        dataset, device, save_dir, oneshot=False, nb201=False,
-                       n_datapoints=None, **kwargs):
+                       n_datapoints=None, ignore_missing_seed=True,
+                       save_evals=True, load_preds=True, **kwargs):
     """
     A function which wraps an nn.Module with the Baselearner container, computes
     predictions and evaluations and finally saves everything.
     """
     assert dataset in ["cifar10", "cifar100", "fmnist", "imagenet", "tiny"]
 
-    model_nn = load_nn_module(state_dict_dir, genotype, init_seed,
-                              dataset=dataset, oneshot=oneshot, nb201=nb201,
-                              **kwargs)
+    #severities = range(6) if (dataset in ["cifar10", "cifar100", "tiny"]) else range(1)
+    severities = range(1)
 
-    severities = range(6) if (dataset in ["cifar10", "cifar100", "tiny"]) else range(1)
+    if not load_preds:
+        model_nn, net_config = load_nn_module(state_dict_dir, genotype, init_seed,
+                                              dataset=dataset, oneshot=oneshot, nb201=nb201,
+                                              ignore_missing_seed=ignore_missing_seed,
+                                              **kwargs)
+        # Load dataloaders (val, test, all severities) to make predictions on
+        #TODO: change this later
+        #dataloaders, num_classes = get_dataloaders_and_classes(dataset, device,
+                                                               #nb201, n_datapoints,
+                                                               #severities)
+    else:
+        model_nn = None
 
     model_id = model_seeds(arch_seed, init_seed, scheme)
     baselearner = Baselearner(model_id=model_id, severities=severities,
                               device=device, nn_module=model_nn)
-
-    # Load dataloaders (val, test, all severities) to make predictions on
-    dataloaders, num_classes = get_dataloaders_and_classes(dataset, device,
-                                                           nb201, n_datapoints)
-
     baselearner.to_device(device)
-    baselearner.compute_preds(dataloaders, severities, num_classes=num_classes)
-    baselearner.compute_evals(severities)
+
+    if not load_preds:
+        baselearner.net_config = net_config
+        #baselearner.compute_preds(dataloaders, severities, num_classes=num_classes)
+        baselearner.compute_preds(kwargs['dataloader'], severities,
+                                  num_classes=kwargs['num_classes'])
+        baselearner.compute_evals(severities)
+    else:
+        baselearner.load_preds(state_dict_dir)
 
     # saves the model_id, nn_module and preds & evals.
-    baselearner.save(save_dir)
+    if save_evals:
+        baselearner.save(save_dir)
     return baselearner
 

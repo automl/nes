@@ -210,7 +210,7 @@ def build_dataloader_cifar_c(batch_size, corruption='clean', severity=0,
     dataset = TensorDatasetWithTrans(tensors=(images, labels), transform=trans)
 
     data_loader = DataLoader(dataset=dataset, batch_size=batch_size,
-                             shuffle=False if not train else True, pin_memory=False)
+                             shuffle=False, pin_memory=False)
     return data_loader
 
 

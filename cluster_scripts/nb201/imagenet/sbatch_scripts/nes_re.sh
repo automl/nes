@@ -2,7 +2,6 @@
 #SBATCH -a 1-3
 #SBATCH -o ./cluster_logs/nes_re/%A-%a.o
 #SBATCH -e ./cluster_logs/nes_re/%A-%a.e
-#SBATCH --gres=gpu:1  # reserves GPUs
 #SBATCH -J nes-re # sets the job name. If not specified, the file name will be used as job name
 
 # Info
@@ -11,12 +10,12 @@ echo "Started at $(date)"
 echo "Running job $SLURM_JOB_NAME using $SLURM_JOB_CPUS_PER_NODE cpus per node with given JID $SLURM_JOB_ID on queue $SLURM_JOB_PARTITION"
 
 # Activate virtual environment
-source venv/bin/activate
+source activate python37
 
 # Arrayjob
-PYTHONPATH=$PWD python nes/nasbench201/scripts/run_nes_re_nb201.py \
---num_iterations 400 --population_size 50 --sample_size 10 \
---working_directory experiments/nb201/imagenet/baselearners/nes_re --severity_list "0 5" \
+PYTHONPATH=$PWD python nes/nasbench201/scripts/run_nes_re.py \
+--num_iterations 400 --population_size 50 --sample_size 3 \
+--working_directory experiments/nb201/imagenet/baselearners/nes_re --severity_list "0" \
 --global_seed $SLURM_ARRAY_TASK_ID --scheme nes_re --dataset imagenet
 
 # Done

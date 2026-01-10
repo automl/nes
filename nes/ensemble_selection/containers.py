@@ -59,6 +59,7 @@ class Baselearner:
         self.nn_module = nn_module
         self.preds = preds
         self.evals = evals
+        self.net_config = None
         self.lsm_applied = False
         self.severities = severities
 
@@ -177,6 +178,22 @@ class Baselearner:
             os.path.join(dir, "preds_evals.pt"),
         )
 
+    def save_evals(self, directory, filename, force_overwrite=False):
+        self.to_device(self._cpu_device)
+
+        if force_overwrite:
+            Path(directory).mkdir(parents=True, exist_ok=True)
+            print(f"Forcefully overwriting {dir}")
+        else:
+            Path(directory).mkdir(parents=True, exist_ok=False)
+
+        torch.save(
+            {"config": self.net_config.genotype.tostr(),
+             "preds": {'val': self.preds['val']['0'], 'test': self.preds['test']['0']},
+             "evals": {'val': self.evals['val']['0'], 'test': self.evals['test']['0']}},
+            os.path.join(directory, "%s.pt"%filename),
+        )
+
     @classmethod
     def load(cls, dir, load_nn_module=False):
 
@@ -207,6 +224,20 @@ class Baselearner:
         )
 
         return obj
+
+    def load_preds(self, filename):
+        config, preds, evals = torch.load(filename).values()
+        # only for severity 0 now
+        self.preds = defaultdict(dict)
+        self.evals = defaultdict(dict)
+
+        self.net_config = config
+        self.preds['val']['0'] = preds['val']
+        self.preds['test']['0'] = preds['test']
+        self.evals['val']['0'] = evals['val']
+        self.evals['test']['0'] = evals['test']
+
+        self.to_device(self.device)
 
 
 def load_baselearner(model_id, load_nn_module, working_dir):

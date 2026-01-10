@@ -6,7 +6,7 @@
 #SBATCH -a 1-3
 
 # Activate virtual environment
-source venv/bin/activate
+source activate python37
 
 PYTHONPATH=$PWD python nes/ensemble_selection/evaluate_ensembles.py \
     --M "3" \

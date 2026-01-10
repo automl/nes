@@ -45,7 +45,8 @@ def rs_master(args):
                     run_id=args.arch_id,
                     scheme=args.scheme,
                     n_datapoints=args.n_datapoints,
-                    dataset=args.dataset)
+                    dataset=args.dataset,
+                    load_preds=True)
 
     worker.compute(config=genotype,
                    budget=200,

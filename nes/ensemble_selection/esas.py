@@ -39,6 +39,26 @@ def run_esa(M, population, esa, val_severity, validation_size=-1, diversity_stre
     #     model_ids_to_ensemble = esa_out['models_chosen']
     #     return model_ids_to_ensemble
 
+def eval_ensemble(population, val_severity, validation_size=-1, diversity_strength=None):
+    model_ids_pool = list(population.keys())
+    models_preds_pool = {
+        x: population[x].preds['val'][str(val_severity)] for x in model_ids_pool
+    }
+
+    if validation_size > -1:
+        assert validation_size > 0, "Validation size cannot be 0."
+        _models_preds_pool = {}
+        for x, tensor_data in models_preds_pool.items():
+            preds, labels = tensor_data.tensors
+            assert (validation_size <= len(preds)), "Validation size too large."
+
+            _tensor_data = torch.utils.data.TensorDataset(preds[:validation_size],
+                                                          labels[:validation_size])
+            _models_preds_pool[x] = _tensor_data
+        models_preds_pool = _models_preds_pool
+
+    ens_out = ens_preds(models_preds_pool, 'loss')
+    return ens_out
 
 # ---------------------------------------------------------------------------- #
 #                         Ensemble selection algorithms                        #
@@ -50,6 +70,33 @@ def run_esa(M, population, esa, val_severity, validation_size=-1, diversity_stre
 # `cluster_scripts/`.
 
 registry = Registry()
+
+
+def ens_preds(models_preds, metric_to_use, lsm_applied=False):
+    assert metric_to_use in ["loss"]  # , "acc"]
+
+    models_keys = list(models_preds.keys())
+    labels = models_preds[models_keys[0]].tensors[1]
+
+    models_evals = {}
+    for key in models_keys:
+        model_preds = models_preds[key]
+        models_evals[key] = evaluate_predictions(model_preds, lsm_applied=lsm_applied)
+
+    models_ranking = sorted(models_evals, key=lambda x: models_evals[x][metric_to_use])
+    models_to_try = {net: models_preds[net].tensors[0] for net in models_ranking}
+
+    ens_predictions = form_ensemble_pred(models_to_try, lsm_applied=False)
+    ens_preds = torch.utils.data.TensorDataset(ens_predictions, labels)
+
+    ens_eval = evaluate_predictions(ens_preds, lsm_applied=True)
+
+    models_to_keep = list(models_to_try.keys())
+    loss = ens_eval[metric_to_use]
+
+    return {"models_chosen": models_to_keep,
+            "loss": loss}
+
 
 # Note "beam_search" is the *forward selection without replacement*.
 @registry('beam_search')
@@ -93,7 +140,8 @@ def beam_search(models_preds, metric_to_use, M, beam_width=1, lsm_applied=False)
         beams = beams_ranking[:beam_width]
         m += 1
 
-    return {"models_chosen": list(beams_ranking[0])}
+    return {"models_chosen": list(beams_ranking[0]),
+            "loss": losses[beams_ranking[0]]}
 
 
 @registry('quick_and_greedy')
@@ -179,19 +227,10 @@ def choose_top_members(models_preds, metric_to_use, M, lsm_applied=False):
 
 import torch
 import torch.nn as nn
-# from my_tools import *
 from nes.ensemble_selection.utils import classif_accuracy
 import numpy as np
 import warnings
 
-
-# def plot_alphas(alphas, save_dir):
-#     fig, ax = plt.subplots()
-#     for x in alphas.squeeze().transpose(1, 0):
-#         ax.plot(x)
-
-#     fig.savefig(save_dir)
-#     plt.close()
 
 class Stacker(nn.Module):
     def __init__(self, N=1):
